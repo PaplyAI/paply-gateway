@@ -14,6 +14,8 @@
 ## Runtime architecture
 
 - `gateway` is the Paply-owned FastAPI edge. It serves `/api/models`, liveness/readiness endpoints, and streams `/v1/*` to LiteLLM.
+- `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key.
+- The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.
 - `litellm` is pinned to the official signed release image and owns provider routing, virtual keys, budgets, rate limits, token counts, and spend logs.
 - PostgreSQL is the durable source of truth for LiteLLM users, keys, budgets, and spend.
 - Redis is for LiteLLM coordination and rate limiting. It is never the durable usage source of truth.

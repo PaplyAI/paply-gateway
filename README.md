@@ -40,7 +40,7 @@ docker compose up -d --build
 curl http://127.0.0.1:4387/health/ready
 ```
 
-LiteLLM 管理端仅绑定本机：<http://127.0.0.1:4000/ui>。使用 `.env` 中的 `LITELLM_MASTER_KEY` 登录。对外客户端入口是 <http://127.0.0.1:4387>。
+Paply 中文管理台仅绑定本机：<http://127.0.0.1:4390>。登录账号由 `.env` 的 `PAPLY_ADMIN_USERNAME` / `PAPLY_ADMIN_PASSWORD` 配置。已汉化的 LiteLLM 原生高级运维后台位于 <http://127.0.0.1:4000/ui>，由单独的 `LITELLM_UI_USERNAME` / `LITELLM_UI_PASSWORD` 登录。对外客户端入口是 <http://127.0.0.1:4387>。
 
 ## 创建用户 Virtual Key
 
@@ -99,4 +99,3 @@ docker compose config --quiet
 - `compose.yaml`：本地单节点拓扑。生产应使用托管 PostgreSQL/Redis、TLS ingress 和独立备份策略。
 
 LiteLLM 官方资料：[Docker 快速开始](https://docs.litellm.ai/docs/proxy/docker_quick_start)、[Virtual Keys](https://docs.litellm.ai/docs/proxy/virtual_keys)、[成本追踪](https://docs.litellm.ai/docs/proxy/cost_tracking)。
-

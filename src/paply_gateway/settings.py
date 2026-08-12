@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     paply_models_config_path: Path = Path("config/paply-models.yaml")
     paply_models_bootstrap_key: SecretStr | None = None
     paply_upstream_timeout_seconds: float = 600.0
+    paply_admin_username: str | None = None
+    paply_admin_password: SecretStr | None = None
+    paply_admin_session_secret: SecretStr | None = None
+    litellm_master_key: SecretStr | None = None
 
     @model_validator(mode="after")
     def validate_runtime_settings(self) -> "Settings":
@@ -59,3 +63,23 @@ class Settings(BaseSettings):
     def public_v1_base_url(self) -> str:
         return f"{self.paply_public_base_url}/v1"
 
+    @property
+    def admin_password(self) -> str:
+        return self._required_secret(self.paply_admin_password, "PAPLY_ADMIN_PASSWORD")
+
+    @property
+    def admin_session_secret(self) -> str:
+        return self._required_secret(
+            self.paply_admin_session_secret,
+            "PAPLY_ADMIN_SESSION_SECRET",
+        )
+
+    @property
+    def master_key(self) -> str:
+        return self._required_secret(self.litellm_master_key, "LITELLM_MASTER_KEY")
+
+    @staticmethod
+    def _required_secret(value: SecretStr | None, name: str) -> str:
+        if value is None or not value.get_secret_value().strip():
+            raise RuntimeError(f"{name} is required for the Paply admin application")
+        return value.get_secret_value().strip()

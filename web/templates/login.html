@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}登录 · PaplyAI 用量管理台{% endblock %}
+{% block body_class %}login-page{% endblock %}
+{% block body %}
+<main class="login-shell">
+  <section class="login-brand" aria-label="PaplyAI 模型用量网关">
+    <div class="brand-mark brand-mark-large">
+      <img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="PaplyAI" />
+    </div>
+    <div>
+      <p class="eyebrow">PAPLYAI 模型用量管理</p>
+      <h1>让每一次模型调用<br />都清晰、可控。</h1>
+      <p class="login-intro">统一管理用户用量、预算和模型状态，为论文 Agent 提供稳定的模型基础设施。</p>
+    </div>
+    <div class="feature-list" aria-label="产品能力">
+      <div><span class="feature-dot"></span><span>逐用户 Token 与费用统计</span></div>
+      <div><span class="feature-dot"></span><span>预算周期与模型权限控制</span></div>
+      <div><span class="feature-dot"></span><span>兼容 PaplyAI 客户端模型协议</span></div>
+    </div>
+  </section>
+
+  <section class="login-card" aria-labelledby="login-heading">
+    <div class="mobile-brand">
+      <img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="" />
+      <span>PaplyAI</span>
+    </div>
+    <p class="eyebrow">管理控制台</p>
+    <h2 id="login-heading">欢迎回来</h2>
+    <p class="muted">请使用管理员账号登录用量管理台。</p>
+
+    {% if error %}
+      <div class="alert alert-error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" class="login-form">
+      <label for="username">管理员账号</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus placeholder="请输入管理员账号" />
+
+      <div class="password-label">
+        <label for="password">登录密码</label>
+        <span>本地测试环境</span>
+      </div>
+      <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="请输入登录密码" />
+
+      <button type="submit" class="primary-button">登录管理台</button>
+    </form>
+    <p class="security-note"><span aria-hidden="true">◇</span> 登录状态仅保存在安全会话 Cookie 中</p>
+  </section>
+</main>
+{% endblock %}

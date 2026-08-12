@@ -1,0 +1,46 @@
+:root {
+  --paply-background: #fdfbf9;
+  --paply-surface: #fffefd;
+  --paply-sidebar: #f8f4f1;
+  --paply-border: #e8dfda;
+  --paply-text: #241f1b;
+  --paply-accent: #5f858e;
+}
+
+html, body {
+  background: var(--paply-background) !important;
+  color: var(--paply-text) !important;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif !important;
+}
+
+aside, nav[class*="border-r"], div[class*="border-r"][class*="h-screen"] {
+  background: var(--paply-sidebar) !important;
+  border-color: var(--paply-border) !important;
+}
+
+[class*="bg-gray-50"], [class*="bg-slate-50"] {
+  background-color: var(--paply-sidebar) !important;
+}
+
+[class*="border-gray-"], [class*="border-slate-"] {
+  border-color: var(--paply-border) !important;
+}
+
+button[class*="bg-blue-"], a[class*="bg-blue-"],
+button[class*="bg-indigo-"], a[class*="bg-indigo-"] {
+  background-color: var(--paply-text) !important;
+  border-color: var(--paply-text) !important;
+}
+
+button, input, select, [role="dialog"],
+[class*="rounded-md"], [class*="rounded-lg"] {
+  border-radius: 12px !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--paply-accent) !important;
+  box-shadow: 0 0 0 3px rgb(95 133 142 / 14%) !important;
+}
+
+table { background: var(--paply-surface); }
+::selection { background: #dce9eb; color: var(--paply-text); }

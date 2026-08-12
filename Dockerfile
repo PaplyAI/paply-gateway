@@ -13,9 +13,9 @@ COPY src ./src
 RUN python -m pip install --upgrade pip && python -m pip install .
 
 COPY config ./config
+COPY web ./web
 
 USER paply
 EXPOSE 4387
 
 CMD ["uvicorn", "paply_gateway.main:app", "--host", "0.0.0.0", "--port", "4387", "--proxy-headers", "--forwarded-allow-ips=*"]
-

@@ -1,0 +1,9 @@
+FROM ghcr.io/berriai/litellm:v1.96.0
+
+COPY scripts/patch_litellm_ui.py /tmp/patch_litellm_ui.py
+COPY web/litellm-ui/paply-zh.js /tmp/paply-zh.js
+COPY web/litellm-ui/paply-theme.css /tmp/paply-theme.css
+COPY web/static/paplyai-logo.png /tmp/paplyai-logo.png
+
+RUN python /tmp/patch_litellm_ui.py \
+    && rm /tmp/patch_litellm_ui.py /tmp/paply-zh.js /tmp/paply-theme.css /tmp/paplyai-logo.png

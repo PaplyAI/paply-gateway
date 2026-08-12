@@ -33,8 +33,46 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  admin:
+    build:
+      context: .
+    restart: unless-stopped
+    command: ["uvicorn", "paply_gateway.admin_main:app", "--host", "0.0.0.0", "--port", "4390", "--proxy-headers", "--forwarded-allow-ips=*"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      PAPLY_ADMIN_PASSWORD: ${PAPLY_ADMIN_PASSWORD}
+      PAPLY_ADMIN_SESSION_SECRET: ${PAPLY_ADMIN_SESSION_SECRET}
+      PAPLY_ADMIN_USERNAME: ${PAPLY_ADMIN_USERNAME}
+      PAPLY_ENVIRONMENT: ${PAPLY_ENVIRONMENT}
+      PAPLY_LITELLM_URL: http://litellm:4000
+      PAPLY_MODELS_CONFIG_PATH: /app/config/paply-models.yaml
+      PAPLY_PUBLIC_BASE_URL: ${PAPLY_PUBLIC_BASE_URL}
+    ports:
+      - "127.0.0.1:4390:4390"
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4390/health/live')"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
   litellm:
-    image: ghcr.io/berriai/litellm:v1.96.0
+    build:
+      context: .
+      dockerfile: Dockerfile.litellm
+    image: paplyai/litellm-zh:v1.96.0
     restart: unless-stopped
     command: ["--config=/app/config.yaml", "--port=4000", "--num_workers=1"]
     environment:
@@ -45,6 +83,8 @@ services:
       PAPLY_CHAT_UPSTREAM_MODEL: ${PAPLY_CHAT_UPSTREAM_MODEL}
       PAPLY_IMAGE_UPSTREAM_MODEL: ${PAPLY_IMAGE_UPSTREAM_MODEL}
       PAPLY_VISION_UPSTREAM_MODEL: ${PAPLY_VISION_UPSTREAM_MODEL}
+      UI_USERNAME: ${LITELLM_UI_USERNAME}
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD}
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_PORT: "6379"
