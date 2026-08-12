@@ -1,0 +1,39 @@
+model_list:
+  - model_name: paply-chat
+    litellm_params:
+      model: os.environ/PAPLY_CHAT_UPSTREAM_MODEL
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: paply-vision
+    litellm_params:
+      model: os.environ/PAPLY_VISION_UPSTREAM_MODEL
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: paply-image
+    litellm_params:
+      model: os.environ/PAPLY_IMAGE_UPSTREAM_MODEL
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: image_generation
+
+litellm_settings:
+  telemetry: false
+  drop_params: false
+  request_timeout: 600
+  num_retries: 0
+  success_callback: [prometheus]
+
+router_settings:
+  enable_pre_call_checks: true
+  redis_host: redis
+  redis_port: 6379
+  redis_password: os.environ/REDIS_PASSWORD
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+  database_connection_pool_limit: 10
+  proxy_batch_write_at: 1
+  disable_spend_logs: false
+

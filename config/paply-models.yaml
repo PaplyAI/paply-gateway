@@ -1,0 +1,26 @@
+schemaVersion: 1
+meta:
+  name: PaplyAI Token Gateway
+  description: PaplyAI-managed models with per-virtual-key usage accounting.
+  note: Provider credentials stay inside LiteLLM and are never delivered to the desktop.
+chat:
+  providers:
+    - id: paply
+      name: PaplyAI
+      api: openai-responses
+      models:
+        - id: paply-chat
+          name: Paply Chat
+          input: [text, image]
+          reasoning: true
+          thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+          contextWindow: 128000
+          maxOutputTokens: 32768
+vision:
+  provider: paply
+  apiType: openai-responses
+  modelId: paply-vision
+imageGen:
+  provider: paply
+  apiType: openai-images
+  modelId: paply-image

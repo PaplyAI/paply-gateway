@@ -1,0 +1,105 @@
+name: paply-token-gateway
+
+services:
+  gateway:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      PAPLY_ENVIRONMENT: ${PAPLY_ENVIRONMENT}
+      PAPLY_LITELLM_URL: http://litellm:4000
+      PAPLY_MODELS_CONFIG_PATH: /app/config/paply-models.yaml
+      PAPLY_MODELS_BOOTSTRAP_KEY: ${PAPLY_MODELS_BOOTSTRAP_KEY:-}
+      PAPLY_PUBLIC_BASE_URL: ${PAPLY_PUBLIC_BASE_URL}
+      PAPLY_UPSTREAM_TIMEOUT_SECONDS: ${PAPLY_UPSTREAM_TIMEOUT_SECONDS:-600}
+    ports:
+      - "4387:4387"
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4387/health/live')"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.96.0
+    restart: unless-stopped
+    command: ["--config=/app/config.yaml", "--port=4000", "--num_workers=1"]
+    environment:
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PAPLY_CHAT_UPSTREAM_MODEL: ${PAPLY_CHAT_UPSTREAM_MODEL}
+      PAPLY_IMAGE_UPSTREAM_MODEL: ${PAPLY_IMAGE_UPSTREAM_MODEL}
+      PAPLY_VISION_UPSTREAM_MODEL: ${PAPLY_VISION_UPSTREAM_MODEL}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PORT: "6379"
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./config/litellm.yaml:/app/config.yaml:ro
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')\""
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: postgres:16.8-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+  redis_data:

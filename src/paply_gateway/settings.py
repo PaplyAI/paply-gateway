@@ -1,0 +1,61 @@
+from pathlib import Path
+from typing import Literal
+from urllib.parse import urlparse
+
+from pydantic import SecretStr, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    paply_environment: Literal["development", "staging", "production"] = "development"
+    paply_litellm_url: str = "http://127.0.0.1:4000"
+    paply_public_base_url: str = "http://127.0.0.1:4387"
+    paply_models_config_path: Path = Path("config/paply-models.yaml")
+    paply_models_bootstrap_key: SecretStr | None = None
+    paply_upstream_timeout_seconds: float = 600.0
+
+    @model_validator(mode="after")
+    def validate_runtime_settings(self) -> "Settings":
+        self.paply_litellm_url = self._validate_origin(
+            self.paply_litellm_url, "PAPLY_LITELLM_URL"
+        )
+        self.paply_public_base_url = self._validate_origin(
+            self.paply_public_base_url, "PAPLY_PUBLIC_BASE_URL"
+        )
+        if self.paply_upstream_timeout_seconds <= 0:
+            raise ValueError("PAPLY_UPSTREAM_TIMEOUT_SECONDS must be greater than zero")
+        if self.paply_environment == "production":
+            if urlparse(self.paply_public_base_url).scheme != "https":
+                raise ValueError("PAPLY_PUBLIC_BASE_URL must use HTTPS in production")
+            if self.bootstrap_key:
+                raise ValueError("PAPLY_MODELS_BOOTSTRAP_KEY must be empty in production")
+        return self
+
+    @staticmethod
+    def _validate_origin(value: str, name: str) -> str:
+        normalized = value.strip().rstrip("/")
+        parsed = urlparse(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError(f"{name} must be an absolute HTTP(S) URL")
+        if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+            raise ValueError(f"{name} must be an origin without a path, query, or fragment")
+        return normalized
+
+    @property
+    def bootstrap_key(self) -> str | None:
+        if self.paply_models_bootstrap_key is None:
+            return None
+        value = self.paply_models_bootstrap_key.get_secret_value().strip()
+        return value or None
+
+    @property
+    def public_v1_base_url(self) -> str:
+        return f"{self.paply_public_base_url}/v1"
+
