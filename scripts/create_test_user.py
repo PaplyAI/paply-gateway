@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create one budgeted LiteLLM virtual key without persisting the master key."""
+"""Provision one LiteLLM accounting user without creating a client API key."""
 
 import argparse
 import json
@@ -11,10 +11,13 @@ import urllib.request
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("user_id", help="Stable Paply user ID; do not use an email address")
-    parser.add_argument("--alias", help="Operator-friendly key alias")
+    parser.add_argument("user_id", help="Stable Paply account ID")
+    parser.add_argument("--alias", help="Operator-friendly user name")
+    parser.add_argument("--email", help="Optional account email")
     parser.add_argument("--max-budget", type=float, default=20.0, help="Budget in USD")
     parser.add_argument("--budget-duration", default="30d")
+    parser.add_argument("--tpm-limit", type=int, help="Optional tokens-per-minute limit")
+    parser.add_argument("--rpm-limit", type=int, help="Optional requests-per-minute limit")
     parser.add_argument(
         "--models",
         nargs="+",
@@ -38,16 +41,25 @@ def main() -> int:
         return 2
 
     payload = {
-        "user_id": args.user_id,
-        "key_alias": args.alias or f"paply-{args.user_id}",
-        "models": args.models,
-        "max_budget": args.max_budget,
+        "auto_create_key": False,
         "budget_duration": args.budget_duration,
-        "metadata": {"issued_by": "paply-token-gateway"},
+        "max_budget": args.max_budget,
+        "metadata": {"provisioned_by": "paply-token-gateway"},
+        "models": args.models,
+        "user_alias": args.alias or args.user_id,
+        "user_id": args.user_id,
+        "user_role": "internal_user",
     }
+    if args.email:
+        payload["user_email"] = args.email
+    if args.tpm_limit is not None:
+        payload["tpm_limit"] = args.tpm_limit
+    if args.rpm_limit is not None:
+        payload["rpm_limit"] = args.rpm_limit
+
     request = urllib.request.Request(
-        f"{args.litellm_url.rstrip('/')}/key/generate",
-        data=json.dumps(payload).encode("utf-8"),
+        f"{args.litellm_url.rstrip('/')}/user/new",
+        data=json.dumps(payload).encode(),
         headers={
             "authorization": f"Bearer {master_key}",
             "content-type": "application/json",
@@ -58,16 +70,16 @@ def main() -> int:
         with urllib.request.urlopen(request, timeout=20) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
-        print(f"LiteLLM rejected key creation with status {error.code}", file=sys.stderr)
+        print(f"LiteLLM rejected user creation with status {error.code}", file=sys.stderr)
         return 1
     except urllib.error.URLError as error:
         print(f"LiteLLM is unreachable: {error.reason}", file=sys.stderr)
         return 1
 
+    result.pop("key", None)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -56,6 +56,13 @@ def _format_money(value: Any) -> str:
         return "$0.0000"
 
 
+def _format_count(value: Any) -> str:
+    try:
+        return f"{int(value or 0):,}"
+    except (TypeError, ValueError):
+        return "0"
+
+
 async def _litellm_json(
     client: httpx.AsyncClient,
     settings: Settings,
@@ -73,33 +80,51 @@ async def _litellm_json(
 
 
 async def _dashboard_data(client: httpx.AsyncClient, settings: Settings) -> dict[str, Any]:
-    spend_result, key_list_result, model_result = await asyncio.gather(
+    end_date = date.today()
+    start_date = end_date - timedelta(days=29)
+    spend_result, user_list_result, model_result, activity_result = await asyncio.gather(
         _litellm_json(client, settings, "/global/spend"),
-        _litellm_json(client, settings, "/key/list", params=[("page", "1"), ("size", "50")]),
+        _litellm_json(
+            client,
+            settings,
+            "/user/list",
+            params=[
+                ("page", "1"),
+                ("page_size", "100"),
+                ("sort_by", "spend"),
+                ("sort_order", "desc"),
+            ],
+        ),
         _litellm_json(client, settings, "/model/info"),
+        _litellm_json(
+            client,
+            settings,
+            "/user/daily/activity",
+            params=[
+                ("start_date", start_date.isoformat()),
+                ("end_date", end_date.isoformat()),
+                ("page", "1"),
+                ("page_size", "100"),
+            ],
+        ),
     )
-    key_hashes = key_list_result.get("keys", []) if isinstance(key_list_result, dict) else []
-    key_results = await asyncio.gather(
-        *(
-            _litellm_json(client, settings, "/key/info", params=[("key", key_hash)])
-            for key_hash in key_hashes
-        )
-    )
-    keys = []
-    for result in key_results:
-        info = result.get("info", {}) if isinstance(result, dict) else {}
+    user_rows = user_list_result.get("users", []) if isinstance(user_list_result, dict) else []
+    users = []
+    for info in user_rows:
+        if not isinstance(info, dict) or info.get("user_role") == "proxy_admin":
+            continue
         spend = float(info.get("spend") or 0)
         budget = float(info.get("max_budget") or 0)
-        keys.append(
+        users.append(
             {
-                "alias": info.get("key_alias") or "未命名密钥",
-                "user_id": info.get("user_id") or "未绑定用户",
+                "alias": info.get("user_alias") or info.get("user_email") or "未命名用户",
+                "user_id": info.get("user_id") or "未知用户",
                 "spend": _format_money(spend),
                 "budget": _format_money(budget),
                 "budget_percent": min(100, round((spend / budget) * 100, 1)) if budget else 0,
                 "models": info.get("models") or [],
                 "duration": info.get("budget_duration") or "未设置",
-                "blocked": bool(info.get("blocked")),
+                "role": info.get("user_role") or "internal_user",
             }
         )
     model_data = model_result.get("data", []) if isinstance(model_result, dict) else []
@@ -112,16 +137,29 @@ async def _dashboard_data(client: httpx.AsyncClient, settings: Settings) -> dict
         if isinstance(item, dict)
     ]
     total_spend = spend_result.get("spend") if isinstance(spend_result, dict) else 0
-    total_budget = sum(
-        float((result.get("info") or {}).get("max_budget") or 0)
-        for result in key_results
+    total_budget = sum(float(row.get("max_budget") or 0) for row in user_rows)
+    activity_metadata = (
+        activity_result.get("metadata", {}) if isinstance(activity_result, dict) else {}
     )
     return {
         "total_spend": _format_money(total_spend),
         "total_budget": _format_money(total_budget),
-        "key_count": len(keys),
+        "user_count": len(users),
         "model_count": len(models),
-        "keys": keys,
+        "total_tokens": _format_count(activity_metadata.get("total_tokens")),
+        "prompt_tokens": _format_count(activity_metadata.get("total_prompt_tokens")),
+        "completion_tokens": _format_count(
+            activity_metadata.get("total_completion_tokens")
+        ),
+        "request_count": _format_count(activity_metadata.get("total_api_requests")),
+        "successful_request_count": _format_count(
+            activity_metadata.get("total_successful_requests")
+        ),
+        "failed_request_count": _format_count(
+            activity_metadata.get("total_failed_requests")
+        ),
+        "activity_period": f"{start_date.isoformat()} 至 {end_date.isoformat()}",
+        "users": users,
         "models": models,
         "updated_at": datetime.now(UTC).astimezone().strftime("%Y年%m月%d日 %H:%M:%S"),
     }

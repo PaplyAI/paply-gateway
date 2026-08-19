@@ -62,13 +62,13 @@ class MediaProviderTemplate(StrictModel):
 
 
 class ModelsTemplate(StrictModel):
-    schema_version: Literal[1] = Field(alias="schemaVersion")
+    schema_version: Literal[2] = Field(alias="schemaVersion")
     meta: ModelMetadata | None = None
     chat: ChatConfig
     vision: MediaProviderTemplate | None
     image_gen: MediaProviderTemplate | None = Field(alias="imageGen")
 
-    def materialize(self, *, base_url: str, api_key: str) -> dict[str, object]:
+    def materialize(self, *, base_url: str) -> dict[str, object]:
         document = self.model_dump(by_alias=True, exclude_none=True)
         chat = document["chat"]
         assert isinstance(chat, dict)
@@ -77,12 +77,10 @@ class ModelsTemplate(StrictModel):
         for provider in providers:
             assert isinstance(provider, dict)
             provider["baseUrl"] = base_url
-            provider["apiKey"] = api_key
         for key in ("vision", "imageGen"):
             media = document.get(key)
             if isinstance(media, dict):
                 media["baseUrl"] = base_url
-                media["apiKey"] = api_key
             elif key not in document:
                 document[key] = None
         return document
@@ -101,4 +99,3 @@ def load_models_template(path: Path) -> ModelsTemplate:
         return ModelsTemplate.model_validate(payload)
     except ValueError as error:
         raise RuntimeError(f"models configuration violates the desktop contract: {path}") from error
-

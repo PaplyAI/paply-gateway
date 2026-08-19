@@ -18,7 +18,11 @@ class Settings(BaseSettings):
     paply_litellm_url: str = "http://127.0.0.1:4000"
     paply_public_base_url: str = "http://127.0.0.1:4387"
     paply_models_config_path: Path = Path("config/paply-models.yaml")
-    paply_models_bootstrap_key: SecretStr | None = None
+    paply_skills_catalog_path: Path | None = None
+    paply_auth_jwt_secret: SecretStr | None = None
+    paply_auth_jwt_issuer: str = "paply"
+    paply_auth_jwt_audience: str = "paply-gateway"
+    paply_litellm_service_token: SecretStr | None = None
     paply_upstream_timeout_seconds: float = 600.0
     paply_admin_username: str | None = None
     paply_admin_password: SecretStr | None = None
@@ -35,11 +39,15 @@ class Settings(BaseSettings):
         )
         if self.paply_upstream_timeout_seconds <= 0:
             raise ValueError("PAPLY_UPSTREAM_TIMEOUT_SECONDS must be greater than zero")
-        if self.paply_environment == "production":
-            if urlparse(self.paply_public_base_url).scheme != "https":
-                raise ValueError("PAPLY_PUBLIC_BASE_URL must use HTTPS in production")
-            if self.bootstrap_key:
-                raise ValueError("PAPLY_MODELS_BOOTSTRAP_KEY must be empty in production")
+        if (
+            self.paply_environment == "production"
+            and urlparse(self.paply_public_base_url).scheme != "https"
+        ):
+            raise ValueError("PAPLY_PUBLIC_BASE_URL must use HTTPS in production")
+        if not self.paply_auth_jwt_issuer.strip():
+            raise ValueError("PAPLY_AUTH_JWT_ISSUER must not be empty")
+        if not self.paply_auth_jwt_audience.strip():
+            raise ValueError("PAPLY_AUTH_JWT_AUDIENCE must not be empty")
         return self
 
     @staticmethod
@@ -53,11 +61,15 @@ class Settings(BaseSettings):
         return normalized
 
     @property
-    def bootstrap_key(self) -> str | None:
-        if self.paply_models_bootstrap_key is None:
-            return None
-        value = self.paply_models_bootstrap_key.get_secret_value().strip()
-        return value or None
+    def auth_jwt_secret(self) -> str:
+        return self._required_secret(self.paply_auth_jwt_secret, "PAPLY_AUTH_JWT_SECRET")
+
+    @property
+    def litellm_service_token(self) -> str:
+        return self._required_secret(
+            self.paply_litellm_service_token,
+            "PAPLY_LITELLM_SERVICE_TOKEN",
+        )
 
     @property
     def public_v1_base_url(self) -> str:

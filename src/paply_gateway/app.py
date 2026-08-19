@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,12 +10,14 @@ from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 from paply_gateway import __version__
+from paply_gateway.auth import bearer_identity
 from paply_gateway.models import ModelsTemplate, load_models_template
 from paply_gateway.settings import Settings
+from paply_gateway.skills import SkillCatalog, create_skill_archive, load_skill_catalog
 
 LOGGER = logging.getLogger("paply.gateway")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
@@ -41,55 +44,12 @@ def _json_log(event: str, **fields: Any) -> None:
     LOGGER.info(json.dumps({"event": event, **fields}, separators=(",", ":"), sort_keys=True))
 
 
-def _bearer_token(request: Request, bootstrap_key: str | None) -> str:
-    authorization = request.headers.get("authorization")
-    if authorization:
-        scheme, separator, token = authorization.partition(" ")
-        if separator and scheme.lower() == "bearer" and token.strip():
-            return token.strip()
-        raise HTTPException(status_code=401, detail="Authorization must use a Bearer token")
-    if bootstrap_key:
-        return bootstrap_key
-    raise HTTPException(status_code=401, detail="A PaplyAI virtual key is required")
-
-
 def _forward_headers(headers: httpx.Headers) -> dict[str, str]:
     return {
         name: value
         for name, value in headers.items()
         if name.lower() not in HOP_BY_HOP_HEADERS and name.lower() != "content-length"
     }
-
-
-async def _validate_virtual_key(
-    client: httpx.AsyncClient,
-    settings: Settings,
-    token: str,
-    request_id: str,
-) -> None:
-    try:
-        response = await client.get(
-            f"{settings.paply_litellm_url}/key/info",
-            headers={
-                "authorization": f"Bearer {token}",
-                "x-request-id": request_id,
-            },
-        )
-    except httpx.RequestError as error:
-        raise HTTPException(
-            status_code=503,
-            detail="LiteLLM key validation is unavailable",
-        ) from error
-    if response.status_code in {401, 403, 404}:
-        raise HTTPException(
-            status_code=401,
-            detail="The PaplyAI virtual key is invalid, expired, or not a virtual key",
-        )
-    if response.is_error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"LiteLLM key validation failed with status {response.status_code}",
-        )
 
 
 def create_app(
@@ -101,6 +61,9 @@ def create_app(
     models_template: ModelsTemplate = load_models_template(
         runtime_settings.paply_models_config_path
     )
+    skills_catalog: SkillCatalog | None = None
+    if runtime_settings.paply_skills_catalog_path is not None:
+        skills_catalog = load_skill_catalog(runtime_settings.paply_skills_catalog_path)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -179,17 +142,48 @@ def create_app(
 
     @application.get("/api/models")
     async def models_config(request: Request) -> dict[str, object]:
-        token = _bearer_token(request, runtime_settings.bootstrap_key)
-        client: httpx.AsyncClient = request.app.state.http_client
-        await _validate_virtual_key(
-            client,
-            runtime_settings,
-            token,
-            request.state.request_id,
-        )
-        return models_template.materialize(
-            base_url=runtime_settings.public_v1_base_url,
-            api_key=token,
+        bearer_identity(request, runtime_settings)
+        return models_template.materialize(base_url=runtime_settings.public_v1_base_url)
+
+    @application.get("/api/skills")
+    async def skills_config() -> dict[str, object]:
+        if skills_catalog is None:
+            raise HTTPException(
+                status_code=503,
+                detail="PaplyAI skill catalog is not configured",
+            )
+        return skills_catalog.public_document(runtime_settings.paply_public_base_url)
+
+    @application.get("/api/skills/{skill_id}/artifact")
+    async def skill_artifact(skill_id: str) -> FileResponse:
+        if skills_catalog is None:
+            raise HTTPException(
+                status_code=503,
+                detail="PaplyAI skill catalog is not configured",
+            )
+        skill = skills_catalog.skill(skill_id)
+        if skill is None or skill.status != "available" or not skill.artifact_path:
+            raise HTTPException(
+                status_code=404,
+                detail="PaplyAI skill artifact was not found",
+            )
+        try:
+            archive = create_skill_archive(skills_catalog, skill)
+        except (OSError, ValueError) as error:
+            _json_log(
+                "skill_artifact_failed",
+                skill_id=skill_id,
+                error_type=type(error).__name__,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="PaplyAI skill artifact is unavailable",
+            ) from error
+        return FileResponse(
+            archive,
+            media_type="application/gzip",
+            filename=f"{skill.id}-{skill.version}.tar.gz",
+            background=BackgroundTask(os.unlink, archive),
         )
 
     @application.api_route(
@@ -197,13 +191,23 @@ def create_app(
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     )
     async def proxy_openai_route(upstream_path: str, request: Request) -> StreamingResponse:
+        identity = bearer_identity(request, runtime_settings)
         client: httpx.AsyncClient = request.app.state.http_client
         headers = {
             name: value
             for name, value in request.headers.items()
             if name.lower() not in HOP_BY_HOP_HEADERS
-            and name.lower() not in {"host", "content-length"}
+            and name.lower()
+            not in {
+                "host",
+                "content-length",
+                "authorization",
+                "x-paply-user-id",
+                "x-paply-service",
+            }
         }
+        headers["authorization"] = f"Bearer {runtime_settings.litellm_service_token}"
+        headers["x-paply-user-id"] = identity.user_id
         headers["x-request-id"] = request.state.request_id
         upstream_request = client.build_request(
             request.method,

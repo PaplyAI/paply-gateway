@@ -1,15 +1,20 @@
-name: paply-token-gateway
-
 services:
   gateway:
     build:
       context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-100}
     restart: unless-stopped
     environment:
       PAPLY_ENVIRONMENT: ${PAPLY_ENVIRONMENT}
       PAPLY_LITELLM_URL: http://litellm:4000
       PAPLY_MODELS_CONFIG_PATH: /app/config/paply-models.yaml
-      PAPLY_MODELS_BOOTSTRAP_KEY: ${PAPLY_MODELS_BOOTSTRAP_KEY:-}
+      PAPLY_SKILLS_CATALOG_PATH: /catalog/catalog.json
+      PAPLY_AUTH_JWT_SECRET: ${PAPLY_AUTH_JWT_SECRET}
+      PAPLY_AUTH_JWT_ISSUER: ${PAPLY_AUTH_JWT_ISSUER:-paply}
+      PAPLY_AUTH_JWT_AUDIENCE: ${PAPLY_AUTH_JWT_AUDIENCE:-paply-gateway}
+      PAPLY_LITELLM_SERVICE_TOKEN: ${PAPLY_LITELLM_SERVICE_TOKEN}
       PAPLY_PUBLIC_BASE_URL: ${PAPLY_PUBLIC_BASE_URL}
       PAPLY_UPSTREAM_TIMEOUT_SECONDS: ${PAPLY_UPSTREAM_TIMEOUT_SECONDS:-600}
     ports:
@@ -17,6 +22,8 @@ services:
     depends_on:
       litellm:
         condition: service_healthy
+    volumes:
+      - ${PAPLY_SKILLS_CATALOG_HOST_PATH:-../paplyai-skills-catalog}:/catalog:ro
     healthcheck:
       test:
         - CMD
@@ -36,6 +43,9 @@ services:
   admin:
     build:
       context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-100}
     restart: unless-stopped
     command: ["uvicorn", "paply_gateway.admin_main:app", "--host", "0.0.0.0", "--port", "4390", "--proxy-headers", "--forwarded-allow-ips=*"]
     environment:
@@ -48,7 +58,7 @@ services:
       PAPLY_MODELS_CONFIG_PATH: /app/config/paply-models.yaml
       PAPLY_PUBLIC_BASE_URL: ${PAPLY_PUBLIC_BASE_URL}
     ports:
-      - "127.0.0.1:4390:4390"
+      - "${PAPLY_ADMIN_BIND_ADDRESS:-127.0.0.1}:4390:4390"
     depends_on:
       litellm:
         condition: service_healthy
@@ -79,9 +89,16 @@ services:
       DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@postgres:5432/litellm
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      PAPLY_LITELLM_SERVICE_TOKEN: ${PAPLY_LITELLM_SERVICE_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PAPLY_CHAT_API_BASE: ${PAPLY_CHAT_API_BASE:-https://api.openai.com/v1}
+      PAPLY_CHAT_API_KEY: ${PAPLY_CHAT_API_KEY:-${OPENAI_API_KEY}}
       PAPLY_CHAT_UPSTREAM_MODEL: ${PAPLY_CHAT_UPSTREAM_MODEL}
+      PAPLY_IMAGE_API_BASE: ${PAPLY_IMAGE_API_BASE:-https://api.openai.com/v1}
+      PAPLY_IMAGE_API_KEY: ${PAPLY_IMAGE_API_KEY:-${OPENAI_API_KEY}}
       PAPLY_IMAGE_UPSTREAM_MODEL: ${PAPLY_IMAGE_UPSTREAM_MODEL}
+      PAPLY_VISION_API_BASE: ${PAPLY_VISION_API_BASE:-https://api.openai.com/v1}
+      PAPLY_VISION_API_KEY: ${PAPLY_VISION_API_KEY:-${OPENAI_API_KEY}}
       PAPLY_VISION_UPSTREAM_MODEL: ${PAPLY_VISION_UPSTREAM_MODEL}
       UI_USERNAME: ${LITELLM_UI_USERNAME}
       UI_PASSWORD: ${LITELLM_UI_PASSWORD}

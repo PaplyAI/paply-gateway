@@ -80,12 +80,14 @@ nav { display: grid; gap: 5px; }
 .status-pill { gap: 8px; min-height: 38px; padding: 0 14px; color: #486a54; border: 1px solid rgba(71,116,89,.16); background: rgba(102,156,117,.08); }
 .status-pill i { width: 7px; height: 7px; border-radius: 50%; background: #5d9870; box-shadow: 0 0 0 4px rgba(93,152,112,.12); }
 .page-alert { margin-bottom: 22px; }
-.metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 10px; }
 .metric-card { padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); }
+.metric-card.primary-metric { background: linear-gradient(145deg, #f7fcfc, #fffefd 62%); border-color: rgba(111, 186, 197, .3); }
 .metric-heading { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; }
 .metric-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 10px; color: #756961; background: var(--soft-card); font-weight: 700; }
 .metric-card > strong { display: block; margin-top: 17px; font-size: 25px; letter-spacing: -.025em; }
 .metric-card > p { margin: 5px 0 0; color: #948880; font-size: 10px; line-height: 1.5; }
+.metric-period { margin: 0 2px 18px; color: #948880; font-size: 10px; text-align: right; }
 .panel { margin-top: 18px; padding: 23px; border: 1px solid var(--border); border-radius: 20px; background: rgba(255,254,253,.88); box-shadow: var(--shadow); scroll-margin-top: 24px; }
 .panel-header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 21px; }
 .panel h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }

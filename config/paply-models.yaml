@@ -1,8 +1,8 @@
-schemaVersion: 1
+schemaVersion: 2
 meta:
   name: PaplyAI Token Gateway
-  description: PaplyAI-managed models with per-virtual-key usage accounting.
-  note: Provider credentials stay inside LiteLLM and are never delivered to the desktop.
+  description: PaplyAI-managed models with server-side per-user usage accounting.
+  note: The document contains no provider key, LiteLLM key, or Paply session credential.
 chat:
   providers:
     - id: paply

@@ -1,63 +1,30 @@
 # paply-desktop integration contract
 
-## Existing contract
+## Authentication
 
-Paply desktop resolves the model document from either:
+The desktop main process authenticates `GET /api/models` and every `/v1/*`
+request with a short-lived Paply login access token. The token is an
+application session: it cannot call a model provider or the private LiteLLM
+listener directly.
 
-1. `PAPLYAI_MODELS_CONFIG_URL`, used as an exact URL; or
-2. the developer-configured Gateway origin plus `/api/models`.
+The current development bridge reads `PAPLYAI_GATEWAY_ACCESS_TOKEN` from the
+host environment. Production must replace that resolver with the Paply account
+login/refresh flow and OS-protected storage. Renderer state, app-state, model
+documents, and diagnostics must never receive the token.
 
-The host validates `schemaVersion: 1` and accepts only these chat transports:
+Remote HTTP is rejected by default. A controlled pilot may set
+`PAPLYAI_ALLOW_INSECURE_GATEWAY=1`; this is a developer-only escape hatch and
+must not be used for a production account session.
 
-- `openai-responses`
-- `openai-completions`
+## Model document v2
 
-Media transports currently accepted by the desktop are:
-
-- `openai-responses`
-- `openai-images`
-- `openai-chat-image`
-- `google-generative-ai-image`
-- `dashscope-native`
-
-The Gateway template in `config/paply-models.yaml` is intentionally missing `baseUrl` and `apiKey`. The edge injects both only after the caller's LiteLLM Virtual Key has been validated.
-
-## Authentication gap in the current desktop
-
-The current `fetchGatewayModelsConfig()` performs an unauthenticated GET. That makes stable per-user accounting impossible: without a durable authenticated identity, the server cannot decide which Virtual Key belongs in the response.
-
-`PAPLY_MODELS_BOOTSTRAP_KEY` is an observable compatibility bridge, not a production identity design. It deliberately fails validation when `PAPLY_ENVIRONMENT=production`.
-
-## Production migration
-
-The desktop should complete this flow before the Gateway is considered production-ready:
-
-1. Paply authentication returns a short-lived application session, not a provider key or LiteLLM master key.
-2. The desktop stores that session in the operating system credential store, never in renderer state or `app-state.json`.
-3. Main-process `GET /api/models` includes `Authorization: Bearer <credential>`.
-4. Paply backend maps the credential to a stable internal user and obtains/rotates that user's LiteLLM Virtual Key.
-5. Gateway validates the Virtual Key and returns the strict model document.
-6. Desktop writes the returned Virtual Key to Pi's host-owned `auth.json`; renderer IPC never receives it.
-7. Logout revokes or detaches the Key explicitly. No failed or legacy session silently falls back to a shared Key.
-
-The MVP edge currently accepts the LiteLLM Virtual Key directly as the Bearer credential. A later Paply identity exchange can replace that step without changing the returned `schemaVersion: 1` document.
-
-## Required request
-
-```http
-GET /api/models HTTP/1.1
-Host: gateway.paply.ai
-Authorization: Bearer sk-user-virtual-key
-X-Request-ID: 7f57b123cb1e4b9791f13b2a4e0348b1
-```
-
-The edge validates the credential against LiteLLM's internal `GET /key/info`. This also rejects a master key because the master key is not a Virtual Key row in PostgreSQL. Invalid, expired, blocked, non-virtual, and unauthorized keys return `401`; unavailable validation returns `503`. It never returns a stale cached configuration as success.
-
-## Response shape
+The host accepts chat transports `openai-responses` and
+`openai-completions`. The public document contains no `apiKey` or other
+credential:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "chat": {
     "providers": [
       {
@@ -65,7 +32,6 @@ The edge validates the credential against LiteLLM's internal `GET /key/info`. Th
         "name": "PaplyAI",
         "api": "openai-responses",
         "baseUrl": "https://gateway.paply.ai/v1",
-        "apiKey": "sk-user-virtual-key",
         "models": [
           {
             "id": "paply-chat",
@@ -83,19 +49,30 @@ The edge validates the credential against LiteLLM's internal `GET /key/info`. Th
     "provider": "paply",
     "apiType": "openai-responses",
     "baseUrl": "https://gateway.paply.ai/v1",
-    "modelId": "paply-vision",
-    "apiKey": "sk-user-virtual-key"
+    "modelId": "paply-vision"
   },
   "imageGen": {
     "provider": "paply",
     "apiType": "openai-images",
     "baseUrl": "https://gateway.paply.ai/v1",
-    "modelId": "paply-image",
-    "apiKey": "sk-user-virtual-key"
+    "modelId": "paply-image"
   }
 }
 ```
 
-## Compatibility tests
+Pi's host-owned `models.json` stores only the dynamic environment reference
+`$PAPLYAI_GATEWAY_ACCESS_TOKEN`; Gateway credentials are removed from
+`auth.json`. Media requests resolve the same session in the main process.
 
-Whenever the desktop or Gateway document changes, copy the intended fixture into both repositories' contract tests. The Gateway must reject unknown fields in its source template, while the desktop remains the final authority on what it can materialize into Pi.
+## Server identity mapping
+
+The edge validates the signed session and derives `user_id` from its `sub`
+claim. It removes any caller-supplied `x-paply-user-id`, replaces the public
+Bearer token with one server-only service credential, and forwards the trusted
+identity to the private LiteLLM listener. LiteLLM custom auth maps that identity
+to the existing accounting user and applies its model, budget, TPM, and RPM
+rules. There is no per-user LiteLLM key.
+
+Both repositories keep the same v2 fixture in contract tests. Unknown or
+expired sessions fail with `401`; the client must not silently fall back to a
+shared identity.

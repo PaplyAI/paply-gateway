@@ -11,7 +11,7 @@
 
     <nav aria-label="主要导航">
       <a class="nav-item active" href="#overview"><span class="nav-icon">⌁</span>用量概览</a>
-      <a class="nav-item" href="#users"><span class="nav-icon">♙</span>用户与密钥</a>
+      <a class="nav-item" href="#users"><span class="nav-icon">♙</span>用户与预算</a>
       <a class="nav-item" href="#models"><span class="nav-icon">◇</span>模型配置</a>
       <a class="nav-item" href="#system"><span class="nav-icon">◌</span>系统状态</a>
     </nav>
@@ -31,29 +31,33 @@
     {% if error %}<div class="alert alert-error page-alert" role="alert">{{ error }}</div>{% endif %}
     {% if data %}
     <section id="overview" class="metric-grid" aria-label="核心指标">
+      <article class="metric-card primary-metric"><div class="metric-heading"><span>近 30 天总 Token</span><span class="metric-icon">T</span></div><strong>{{ data.total_tokens }}</strong><p>输入 {{ data.prompt_tokens }} · 输出 {{ data.completion_tokens }}</p></article>
+      <article class="metric-card"><div class="metric-heading"><span>近 30 天请求</span><span class="metric-icon">↗</span></div><strong>{{ data.request_count }}</strong><p>成功 {{ data.successful_request_count }} · 失败 {{ data.failed_request_count }}</p></article>
       <article class="metric-card"><div class="metric-heading"><span>累计模型费用</span><span class="metric-icon">¥</span></div><strong>{{ data.total_spend }}</strong><p>LiteLLM 已记录的实际调用费用</p></article>
-      <article class="metric-card"><div class="metric-heading"><span>已分配预算</span><span class="metric-icon">◫</span></div><strong>{{ data.total_budget }}</strong><p>全部有效用户密钥的预算总额</p></article>
-      <article class="metric-card"><div class="metric-heading"><span>用户密钥</span><span class="metric-icon">⌘</span></div><strong>{{ data.key_count }}</strong><p>当前纳入计量与权限控制</p></article>
+      <article class="metric-card"><div class="metric-heading"><span>已分配预算</span><span class="metric-icon">◫</span></div><strong>{{ data.total_budget }}</strong><p>全部有效用户身份的预算总额</p></article>
+      <article class="metric-card"><div class="metric-heading"><span>计量用户</span><span class="metric-icon">♙</span></div><strong>{{ data.user_count }}</strong><p>用户是计量身份，不持有模型密钥</p></article>
       <article class="metric-card"><div class="metric-heading"><span>在线模型</span><span class="metric-icon">✦</span></div><strong>{{ data.model_count }}</strong><p>聊天、识图与生图模型别名</p></article>
     </section>
 
+    <p class="metric-period">Token 与请求统计周期：{{ data.activity_period }}</p>
+
     <section id="users" class="panel">
-      <div class="panel-header"><div><p class="eyebrow">用户管理</p><h2>用户与访问密钥</h2><p>每个用户独立计量，预算用尽后由计量服务自动阻止调用。</p></div><span class="count-chip">{{ data.key_count }} 个密钥</span></div>
+      <div class="panel-header"><div><p class="eyebrow">用户管理</p><h2>用户与预算</h2><p>客户端只使用 Paply 登录会话；模型密钥与 LiteLLM 密钥始终留在服务端。</p></div><span class="count-chip">{{ data.user_count }} 个用户</span></div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>名称</th><th>用户标识</th><th>可用模型</th><th>费用 / 预算</th><th>周期</th><th>状态</th></tr></thead>
           <tbody>
-          {% for key in data["keys"] %}
+          {% for user in data["users"] %}
             <tr>
-              <td><strong>{{ key.alias }}</strong></td>
-              <td><code>{{ key.user_id }}</code></td>
-              <td><div class="tag-list">{% for model in key.models %}<span>{{ model }}</span>{% endfor %}</div></td>
-              <td><div class="budget-cell"><div><strong>{{ key.spend }}</strong><span>/ {{ key.budget }}</span></div><div class="progress"><i style="width: {{ key.budget_percent }}%"></i></div></div></td>
-              <td>{{ key.duration }}</td>
-              <td>{% if key.blocked %}<span class="state-chip blocked">已停用</span>{% else %}<span class="state-chip">正常</span>{% endif %}</td>
+              <td><strong>{{ user.alias }}</strong></td>
+              <td><code>{{ user.user_id }}</code></td>
+              <td><div class="tag-list">{% for model in user.models %}<span>{{ model }}</span>{% endfor %}</div></td>
+              <td><div class="budget-cell"><div><strong>{{ user.spend }}</strong><span>/ {{ user.budget }}</span></div><div class="progress"><i style="width: {{ user.budget_percent }}%"></i></div></div></td>
+              <td>{{ user.duration }}</td>
+              <td><span class="state-chip">{{ user.role }}</span></td>
             </tr>
           {% else %}
-            <tr><td colspan="6" class="empty-state">暂时没有用户密钥</td></tr>
+            <tr><td colspan="6" class="empty-state">暂时没有计量用户</td></tr>
           {% endfor %}
           </tbody>
         </table>

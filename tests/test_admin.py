@@ -10,7 +10,7 @@ from paply_gateway.settings import Settings
 def admin_settings(tmp_path: Path) -> Settings:
     config = tmp_path / "models.yaml"
     config.write_text(
-        "schemaVersion: 1\nchat: {providers: []}\nvision: null\nimageGen: null\n",
+        "schemaVersion: 2\nchat: {providers: []}\nvision: null\nimageGen: null\n",
         encoding="utf-8",
     )
     return Settings(
@@ -64,22 +64,25 @@ def test_admin_login_renders_usage_dashboard_without_exposing_master_key(
         assert request.headers["authorization"] == "Bearer test-master-key"
         if request.url.path == "/global/spend":
             return httpx.Response(200, json={"spend": 1.25, "max_budget": 0})
-        if request.url.path == "/key/list":
-            return httpx.Response(200, json={"keys": ["hashed-key"], "total_count": 1})
-        if request.url.path == "/key/info":
-            assert request.url.params["key"] == "hashed-key"
+        if request.url.path == "/user/list":
             return httpx.Response(
                 200,
                 json={
-                    "key": "hashed-key",
-                    "info": {
-                        "key_alias": "论文测试账号",
+                    "users": [
+                        {
+                        "user_alias": "论文测试账号",
                         "user_id": "user_test",
+                        "user_role": "internal_user",
                         "spend": 1.25,
                         "max_budget": 20,
                         "models": ["paply-chat"],
                         "budget_duration": "30d",
-                    },
+                        }
+                    ],
+                    "total": 1,
+                    "page": 1,
+                    "page_size": 100,
+                    "total_pages": 1,
                 },
             )
         if request.url.path == "/model/info":
@@ -92,6 +95,23 @@ def test_admin_login_renders_usage_dashboard_without_exposing_master_key(
                             "litellm_params": {"model": "openai/gpt-5-mini"},
                         }
                     ]
+                },
+            )
+        if request.url.path == "/user/daily/activity":
+            assert request.url.params["start_date"]
+            assert request.url.params["end_date"]
+            return httpx.Response(
+                200,
+                json={
+                    "results": [],
+                    "metadata": {
+                        "total_tokens": 125000,
+                        "total_prompt_tokens": 100000,
+                        "total_completion_tokens": 25000,
+                        "total_api_requests": 48,
+                        "total_successful_requests": 46,
+                        "total_failed_requests": 2,
+                    },
                 },
             )
         raise AssertionError(f"unexpected upstream call: {request.url}")
@@ -113,6 +133,9 @@ def test_admin_login_renders_usage_dashboard_without_exposing_master_key(
     assert "用量概览" in dashboard.text
     assert "论文测试账号" in dashboard.text
     assert "$1.2500" in dashboard.text
+    assert "125,000" in dashboard.text
+    assert "输入 100,000 · 输出 25,000" in dashboard.text
+    assert "成功 46 · 失败 2" in dashboard.text
     assert "test-master-key" not in dashboard.text
 
 
@@ -120,10 +143,12 @@ def test_logout_clears_admin_session(tmp_path: Path) -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/global/spend":
             return httpx.Response(200, json={"spend": 0})
-        if request.url.path == "/key/list":
-            return httpx.Response(200, json={"keys": []})
+        if request.url.path == "/user/list":
+            return httpx.Response(200, json={"users": [], "total": 0})
         if request.url.path == "/model/info":
             return httpx.Response(200, json={"data": []})
+        if request.url.path == "/user/daily/activity":
+            return httpx.Response(200, json={"results": [], "metadata": {}})
         raise AssertionError(f"unexpected upstream call: {request.url}")
 
     app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))

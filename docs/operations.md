@@ -7,30 +7,42 @@ Public production ingress should expose only:
 - `GET /health/live`
 - `GET /health/ready` (optionally restricted to health-check networks)
 - `GET /api/models`
+- `GET /api/skills`
+- `GET /api/skills/{skill-id}/artifact`
 - the required `/v1/*` OpenAI-compatible routes
 
 LiteLLM port `4000`, `/ui`, master-key endpoints, PostgreSQL, and Redis belong on the operator network. Local Compose binds LiteLLM to `127.0.0.1` and does not publish either database.
 
 ## User accounting model
 
-Use a stable opaque Paply user ID as LiteLLM `user_id` and issue at least one Virtual Key per user/device boundary. Set:
+Use a stable opaque Paply account ID as LiteLLM `user_id`; do not issue a LiteLLM key to the client. Set on the user record:
 
 - `models` to the Paply aliases the user may call;
 - `max_budget` and `budget_duration` for hard spend control;
 - team membership for organizational budgets;
 - TPM/RPM limits where abuse control is required.
 
-Do not share the master key or provider key with the desktop. Revoke a lost client Virtual Key without rotating provider credentials for every user.
+The desktop holds only a short-lived Paply login session. Revoke/refresh that session in the Paply identity service without rotating any LiteLLM or provider credential.
 
 LiteLLM's PostgreSQL spend logs are authoritative. Dashboards and exports should read through supported LiteLLM management APIs/UI rather than coupling Paply code to LiteLLM's internal Prisma table layout.
+
+The Paply management dashboard reads the latest 30-day prompt, completion, and total token aggregates from LiteLLM's usage API. It must not calculate tokens from request text. The edge strips caller-supplied internal identity headers and derives the LiteLLM user from the verified session.
+
+## Provider routing on a mainland China host
+
+Chat, vision, and image generation have separate `PAPLY_*_UPSTREAM_MODEL`, `PAPLY_*_API_BASE`, and `PAPLY_*_API_KEY` settings. They may point at different OpenAI-compatible upstreams while the desktop continues to use the stable `paply-chat`, `paply-vision`, and `paply-image` aliases. Before deployment, verify from the target host that each upstream is reachable and that its selected LiteLLM provider adapter supports the corresponding Responses, Chat Completions, or Images route.
+
+Provider credentials stay only in the `litellm` container. Do not put a domestic provider key into `config/paply-models.yaml`, a desktop setting, or the public Gateway response.
 
 ## Secrets
 
 - `LITELLM_MASTER_KEY`: operator authentication. Rotate through a planned maintenance procedure.
 - `LITELLM_SALT_KEY`: encryption root for values stored by LiteLLM. Back it up securely and keep it stable; changing it can make stored encrypted values unreadable.
+- `PAPLY_AUTH_JWT_SECRET`: signs development Paply access tokens; production should use the account service's managed signing keys.
+- `PAPLY_LITELLM_SERVICE_TOKEN`: authenticates only the edge-to-LiteLLM hop and never leaves the server network.
 - provider API keys: server-side only and independently rotatable.
 - `POSTGRES_PASSWORD` and `REDIS_PASSWORD`: unique production secrets, supplied by the deployment secret manager.
-- user Virtual Keys: revocable client credentials. Never include them in logs, crash reports, query strings, or analytics.
+- Paply access tokens: short-lived client sessions. Never include them in logs, crash reports, query strings, model documents, or analytics.
 
 The committed `.env.example` contains placeholders only. CI and production must inject real values from their secret manager.
 
@@ -38,10 +50,10 @@ The committed `.env.example` contains placeholders only. CI and production must 
 
 Back up PostgreSQL on a defined schedule and test restore into an isolated environment. Redis persistence helps local recovery but does not replace PostgreSQL backups. A restore test should verify:
 
-1. users, teams, Virtual Keys, and budgets are present;
+1. users, teams, budgets, and operator credentials are present;
 2. spend aggregates reconcile with a pre-backup sample;
 3. encrypted provider configuration remains readable with the backed-up salt key;
-4. revoked keys remain revoked.
+4. blocked users and revoked operator credentials remain blocked/revoked.
 
 ## Upgrades
 
