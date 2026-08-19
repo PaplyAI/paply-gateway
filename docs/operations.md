@@ -6,6 +6,11 @@ Public production ingress should expose only:
 
 - `GET /health/live`
 - `GET /health/ready` (optionally restricted to health-check networks)
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
 - `GET /api/models`
 - `GET /api/skills`
 - `GET /api/skills/{skill-id}/artifact`
@@ -22,7 +27,12 @@ Use a stable opaque Paply account ID as LiteLLM `user_id`; do not issue a LiteLL
 - team membership for organizational budgets;
 - TPM/RPM limits where abuse control is required.
 
-The desktop holds only a short-lived Paply login session. Revoke/refresh that session in the Paply identity service without rotating any LiteLLM or provider credential.
+The desktop main process holds only a short-lived Paply access session and an
+OS-encrypted refresh token. The internal pilot stores accounts and hashed
+refresh sessions in the `gateway_accounts` SQLite volume. Back up that volume
+with PostgreSQL; move identity to Paply's shared account service before public
+launch. Revoking a login session does not rotate any LiteLLM or provider
+credential.
 
 LiteLLM's PostgreSQL spend logs are authoritative. Dashboards and exports should read through supported LiteLLM management APIs/UI rather than coupling Paply code to LiteLLM's internal Prisma table layout.
 
@@ -39,6 +49,7 @@ Provider credentials stay only in the `litellm` container. Do not put a domestic
 - `LITELLM_MASTER_KEY`: operator authentication. Rotate through a planned maintenance procedure.
 - `LITELLM_SALT_KEY`: encryption root for values stored by LiteLLM. Back it up securely and keep it stable; changing it can make stored encrypted values unreadable.
 - `PAPLY_AUTH_JWT_SECRET`: signs development Paply access tokens; production should use the account service's managed signing keys.
+- `gateway_accounts` volume: contains password hashes and hashed refresh sessions; protect and back it up as identity data.
 - `PAPLY_LITELLM_SERVICE_TOKEN`: authenticates only the edge-to-LiteLLM hop and never leaves the server network.
 - provider API keys: server-side only and independently rotatable.
 - `POSTGRES_PASSWORD` and `REDIS_PASSWORD`: unique production secrets, supplied by the deployment secret manager.

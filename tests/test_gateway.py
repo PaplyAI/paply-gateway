@@ -35,10 +35,12 @@ def make_settings(config_path: Path, **overrides: object) -> Settings:
         "paply_litellm_url": "http://litellm.test",
         "paply_public_base_url": "https://gateway.paply.test",
         "paply_models_config_path": config_path,
+        "paply_accounts_db_path": config_path.parent / "accounts.sqlite3",
         "paply_auth_jwt_secret": "test-paply-jwt-secret",
         "paply_auth_jwt_issuer": "paply-test",
         "paply_auth_jwt_audience": "paply-gateway-test",
         "paply_litellm_service_token": "test-internal-service-token",
+        "litellm_master_key": "test-master-key",
         "paply_upstream_timeout_seconds": 10,
         "_env_file": None,
     }
@@ -74,6 +76,107 @@ def test_models_config_requires_a_paply_session(config_path: Path) -> None:
 
     assert response.status_code == 401
     assert response.headers["x-request-id"]
+
+
+def test_register_login_refresh_and_logout_create_no_client_key(config_path: Path) -> None:
+    provisioned_users: list[dict[str, object]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/user/new":
+            assert request.headers["authorization"] == "Bearer test-master-key"
+            payload = json.loads(request.content)
+            assert payload["auto_create_key"] is False
+            assert payload["user_email"] == "researcher@example.com"
+            assert payload["models"] == ["paply-chat", "paply-vision", "paply-image"]
+            provisioned_users.append(payload)
+            return httpx.Response(200, json={"user_id": payload["user_id"], "token": None})
+        raise AssertionError(f"unexpected upstream call: {request.url}")
+
+    app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        registered = client.post(
+            "/api/auth/register",
+            json={
+                "displayName": "论文研究员",
+                "email": "Researcher@Example.com",
+                "password": "correct-horse-battery-staple",
+            },
+        )
+        assert registered.status_code == 200
+        session = registered.json()
+        assert session["user"]["email"] == "researcher@example.com"
+        assert session["user"]["displayName"] == "论文研究员"
+        assert session["accessToken"]
+        assert session["refreshToken"]
+        assert "key" not in json.dumps(session).lower()
+
+        me = client.get(
+            "/api/auth/me",
+            headers={"authorization": f"Bearer {session['accessToken']}"},
+        )
+        assert me.status_code == 200
+        assert me.json()["id"] == session["user"]["id"]
+
+        refreshed = client.post(
+            "/api/auth/refresh",
+            json={"refreshToken": session["refreshToken"]},
+        )
+        assert refreshed.status_code == 200
+        rotated = refreshed.json()
+        assert rotated["refreshToken"] != session["refreshToken"]
+
+        old_refresh = client.post(
+            "/api/auth/refresh",
+            json={"refreshToken": session["refreshToken"]},
+        )
+        assert old_refresh.status_code == 401
+
+        logout = client.post(
+            "/api/auth/logout",
+            json={"refreshToken": rotated["refreshToken"]},
+        )
+        assert logout.status_code == 200
+        after_logout = client.post(
+            "/api/auth/refresh",
+            json={"refreshToken": rotated["refreshToken"]},
+        )
+        assert after_logout.status_code == 401
+
+        login = client.post(
+            "/api/auth/login",
+            json={
+                "email": "researcher@example.com",
+                "password": "correct-horse-battery-staple",
+            },
+        )
+        assert login.status_code == 200
+
+    assert len(provisioned_users) == 1
+    assert provisioned_users[0]["user_id"].startswith("user_")
+
+
+def test_registration_rejects_duplicate_email_and_invalid_login(config_path: Path) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/user/new":
+            return httpx.Response(200, json={"ok": True})
+        raise AssertionError(f"unexpected upstream call: {request.url}")
+
+    app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
+    payload = {
+        "displayName": "测试用户",
+        "email": "duplicate@example.com",
+        "password": "correct-horse-battery-staple",
+    }
+    with TestClient(app) as client:
+        assert client.post("/api/auth/register", json=payload).status_code == 200
+        duplicate = client.post("/api/auth/register", json=payload)
+        invalid_login = client.post(
+            "/api/auth/login",
+            json={"email": payload["email"], "password": "wrong-password"},
+        )
+
+    assert duplicate.status_code == 409
+    assert invalid_login.status_code == 401
 
 
 def test_models_config_contains_no_credentials(config_path: Path) -> None:

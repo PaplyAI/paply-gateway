@@ -9,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT}
 
 RUN addgroup --system paply && adduser --system --ingroup paply paply
+RUN mkdir -p /data && chown paply:paply /data
 
 WORKDIR /app
 

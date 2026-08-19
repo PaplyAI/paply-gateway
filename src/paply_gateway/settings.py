@@ -19,9 +19,14 @@ class Settings(BaseSettings):
     paply_public_base_url: str = "http://127.0.0.1:4387"
     paply_models_config_path: Path = Path("config/paply-models.yaml")
     paply_skills_catalog_path: Path | None = None
+    paply_accounts_db_path: Path = Path("data/accounts.sqlite3")
     paply_auth_jwt_secret: SecretStr | None = None
     paply_auth_jwt_issuer: str = "paply"
     paply_auth_jwt_audience: str = "paply-gateway"
+    paply_auth_access_token_seconds: int = 3600
+    paply_auth_refresh_token_seconds: int = 30 * 24 * 3600
+    paply_default_user_budget: float = 20.0
+    paply_default_user_budget_duration: str = "30d"
     paply_litellm_service_token: SecretStr | None = None
     paply_upstream_timeout_seconds: float = 600.0
     paply_admin_username: str | None = None
@@ -48,6 +53,16 @@ class Settings(BaseSettings):
             raise ValueError("PAPLY_AUTH_JWT_ISSUER must not be empty")
         if not self.paply_auth_jwt_audience.strip():
             raise ValueError("PAPLY_AUTH_JWT_AUDIENCE must not be empty")
+        if self.paply_auth_access_token_seconds <= 0:
+            raise ValueError("PAPLY_AUTH_ACCESS_TOKEN_SECONDS must be greater than zero")
+        if self.paply_auth_refresh_token_seconds <= self.paply_auth_access_token_seconds:
+            raise ValueError(
+                "PAPLY_AUTH_REFRESH_TOKEN_SECONDS must exceed the access token lifetime"
+            )
+        if self.paply_default_user_budget <= 0:
+            raise ValueError("PAPLY_DEFAULT_USER_BUDGET must be greater than zero")
+        if not self.paply_default_user_budget_duration.strip():
+            raise ValueError("PAPLY_DEFAULT_USER_BUDGET_DURATION must not be empty")
         return self
 
     @staticmethod
@@ -93,5 +108,5 @@ class Settings(BaseSettings):
     @staticmethod
     def _required_secret(value: SecretStr | None, name: str) -> str:
         if value is None or not value.get_secret_value().strip():
-            raise RuntimeError(f"{name} is required for the Paply admin application")
+            raise RuntimeError(f"{name} is required for the Paply Gateway runtime")
         return value.get_secret_value().strip()

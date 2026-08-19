@@ -11,12 +11,18 @@ services:
       PAPLY_LITELLM_URL: http://litellm:4000
       PAPLY_MODELS_CONFIG_PATH: /app/config/paply-models.yaml
       PAPLY_SKILLS_CATALOG_PATH: /catalog/catalog.json
+      PAPLY_ACCOUNTS_DB_PATH: /data/accounts.sqlite3
       PAPLY_AUTH_JWT_SECRET: ${PAPLY_AUTH_JWT_SECRET}
       PAPLY_AUTH_JWT_ISSUER: ${PAPLY_AUTH_JWT_ISSUER:-paply}
       PAPLY_AUTH_JWT_AUDIENCE: ${PAPLY_AUTH_JWT_AUDIENCE:-paply-gateway}
+      PAPLY_AUTH_ACCESS_TOKEN_SECONDS: ${PAPLY_AUTH_ACCESS_TOKEN_SECONDS:-3600}
+      PAPLY_AUTH_REFRESH_TOKEN_SECONDS: ${PAPLY_AUTH_REFRESH_TOKEN_SECONDS:-2592000}
+      PAPLY_DEFAULT_USER_BUDGET: ${PAPLY_DEFAULT_USER_BUDGET:-20}
+      PAPLY_DEFAULT_USER_BUDGET_DURATION: ${PAPLY_DEFAULT_USER_BUDGET_DURATION:-30d}
       PAPLY_LITELLM_SERVICE_TOKEN: ${PAPLY_LITELLM_SERVICE_TOKEN}
       PAPLY_PUBLIC_BASE_URL: ${PAPLY_PUBLIC_BASE_URL}
       PAPLY_UPSTREAM_TIMEOUT_SECONDS: ${PAPLY_UPSTREAM_TIMEOUT_SECONDS:-600}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
     ports:
       - "4387:4387"
     depends_on:
@@ -24,6 +30,7 @@ services:
         condition: service_healthy
     volumes:
       - ${PAPLY_SKILLS_CATALOG_HOST_PATH:-../paplyai-skills-catalog}:/catalog:ro
+      - gateway_accounts:/data
     healthcheck:
       test:
         - CMD
@@ -158,5 +165,6 @@ services:
       - no-new-privileges:true
 
 volumes:
+  gateway_accounts:
   postgres_data:
   redis_data:

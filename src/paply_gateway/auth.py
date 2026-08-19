@@ -2,13 +2,72 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 from dataclasses import dataclass
 from time import time
 from typing import Any
 
 from fastapi import HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from paply_gateway.accounts import Account
 from paply_gateway.settings import Settings
+
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+class StrictAuthModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class LoginRequest(StrictAuthModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not EMAIL_PATTERN.fullmatch(normalized):
+            raise ValueError("email must be valid")
+        return normalized
+
+
+class RegisterRequest(LoginRequest):
+    display_name: str = Field(alias="displayName", min_length=1, max_length=80)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("displayName must not be empty")
+        return normalized
+
+
+class RefreshRequest(StrictAuthModel):
+    refresh_token: str = Field(alias="refreshToken", min_length=32, max_length=256)
+
+
+class LogoutRequest(RefreshRequest):
+    pass
+
+
+class AccountDocument(StrictAuthModel):
+    id: str
+    email: str
+    display_name: str = Field(alias="displayName")
+
+    @classmethod
+    def from_account(cls, account: Account) -> "AccountDocument":
+        return cls(id=account.id, email=account.email, displayName=account.display_name)
+
+
+class SessionDocument(StrictAuthModel):
+    access_token: str = Field(alias="accessToken")
+    access_token_expires_at: int = Field(alias="accessTokenExpiresAt")
+    refresh_token: str = Field(alias="refreshToken")
+    user: AccountDocument
 
 
 @dataclass(frozen=True)

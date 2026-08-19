@@ -2,7 +2,8 @@
 
 ```text
 Paply desktop main process
-  │  Paply login access token
+  ├─ register / login / refresh ── encrypted refresh session
+  │  short-lived Paply access token
   ├─ GET /api/models ── model aliases + public /v1 URL, no credentials
   ├─ GET /api/skills ── PaplyAI catalog and bounded artifacts
   └─ /v1/responses | chat/completions | images
@@ -20,10 +21,10 @@ Paply desktop main process
                PostgreSQL       Redis
 ```
 
-The desktop never receives provider keys, LiteLLM keys, or the internal
-service credential. A user is a stable accounting and policy identity, not a
-virtual key. The only client credential is a normal short-lived Paply login
-session.
+The renderer never receives provider keys, LiteLLM keys, internal service
+credentials, or login tokens. A user is a stable accounting and policy
+identity, not a virtual key. The main process owns the short-lived application
+session and encrypts its refresh token with OS-backed storage.
 
 LiteLLM remains the single token and spend ledger. The edge preserves streaming
 and upstream status codes, does not retry billable requests, and never logs

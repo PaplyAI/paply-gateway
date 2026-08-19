@@ -8,7 +8,8 @@ Paply 论文 Agent 的模型网关工程。它以 [LiteLLM Proxy](https://github
 
 ```text
 Paply Desktop
-  ├─ GET /api/models ───────────────┐
+  ├─ 注册 / 登录 / 刷新会话 ─────────┐
+  ├─ GET /api/models ───────────────┤
   ├─ GET /api/skills + artifacts ───┤
   └─ /v1/responses | chat | images ─┤
                                      ▼
@@ -27,6 +28,7 @@ Paply Desktop
 - token 与费用以 LiteLLM 记录的 provider usage 为准，不在 Paply 层重复估算。
 - 用户是计量身份，不是一把客户端模型 Key；预算、模型白名单和速率限制绑定稳定 `user_id`。
 - 客户端只持有短期 Paply 登录会话。provider key、LiteLLM key 和内部服务凭证只存在于服务端。
+- 用户注册时自动创建稳定的 LiteLLM 计量用户，并强制 `auto_create_key=false`；账号、密码和模型密钥不会写进客户端配置。
 - Gateway 不记录 prompt、response、Authorization 或请求体。
 - `/v1/*` 不自动重试，避免一次客户端请求产生重复计费。
 
@@ -45,22 +47,15 @@ curl http://127.0.0.1:4387/health/ready
 
 Paply 中文管理台仅绑定本机：<http://127.0.0.1:4390>。登录账号由 `.env` 的 `PAPLY_ADMIN_USERNAME` / `PAPLY_ADMIN_PASSWORD` 配置。已汉化的 LiteLLM 原生高级运维后台位于 <http://127.0.0.1:4000/ui>，由单独的 `LITELLM_UI_USERNAME` / `LITELLM_UI_PASSWORD` 登录。对外客户端入口是 <http://127.0.0.1:4387>。
 
-## 创建测试用户与登录会话
+## 内部账号注册与登录
 
 ```bash
-LITELLM_MASTER_KEY='你的管理密钥' \
-  python scripts/create_test_user.py user_01 \
-  --alias paply-user-01 \
-  --max-budget 20 \
-  --budget-duration 30d \
-  --tpm-limit 100000 \
-  --rpm-limit 60
-
-docker exec "$(docker compose ps -q gateway)" \
-  python scripts/create_access_token.py user_01 --hours 24
+curl -X POST http://127.0.0.1:4387/api/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"displayName":"测试同事","email":"tester@example.com","password":"至少八位密码"}'
 ```
 
-第一个脚本只创建 LiteLLM 计量用户，并明确设置 `auto_create_key=false`；第二个脚本在 Gateway 容器内签发开发测试用的短期 Paply 会话。二者都不创建或下发模型 API Key。正式环境应由 Paply 账号服务签发和刷新会话。
+Desktop 已内置相同流程：用户只看到注册和登录页，成功后自动获取模型配置并进入产品。Gateway 签发短期访问会话和可轮换刷新会话；注册同时建立 LiteLLM 计量用户，但不创建或下发模型 API Key。当前 SQLite 账号库用于内部体验，正式上线前应迁移到 Paply 统一账号服务。
 
 可在 LiteLLM 管理界面查看：
 
@@ -71,13 +66,7 @@ docker exec "$(docker compose ps -q gateway)" \
 
 ## 与 paply-desktop 对接
 
-Gateway 模型协议为 `schemaVersion: 2`。`/api/models` 与 `/v1/*` 都使用同一个 Paply 登录会话；模型文档中没有 `apiKey`。当前开发桥从主进程环境读取短期会话：
-
-```bash
-PAPLYAI_GATEWAY_ACCESS_TOKEN='<上一步签发的短期会话>' npm start
-```
-
-然后在 desktop 的“开发者选项 → API Gateway 地址”填写 `http://127.0.0.1:4387`，并启用本地 HTTP 调试开关。生产必须使用 HTTPS，并由账号登录流程把可刷新会话保存在主进程安全存储中。
+Gateway 模型协议为 `schemaVersion: 2`。`/api/models` 与 `/v1/*` 都使用同一个 Paply 登录会话；模型文档中没有 `apiKey`。Desktop 内置内部 Gateway 地址，产品用户无需填写地址、Token 或 SK。主进程用 Electron `safeStorage` 加密保存刷新会话，短期访问会话仅保留在主进程内存中。工程测试可用 `PAPLYAI_GATEWAY_BASE_URL` 覆盖地址；正式上线前必须切换 HTTPS 域名。
 
 整体职责与请求链路见 [docs/gateway-architecture.md](docs/gateway-architecture.md)，详细客户端迁移契约见 [docs/desktop-integration.md](docs/desktop-integration.md)，部署和密钥运维见 [docs/operations.md](docs/operations.md)。
 

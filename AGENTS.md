@@ -13,7 +13,7 @@
 
 ## Runtime architecture
 
-- `gateway` is the Paply-owned FastAPI edge. It serves `/api/models`, the PaplyAI `/api/skills` catalog and artifacts, liveness/readiness endpoints, and streams `/v1/*` to LiteLLM.
+- `gateway` is the Paply-owned FastAPI edge. It owns the internal-pilot account registration/login/refresh/logout API, persists password hashes and hashed refresh sessions in its SQLite volume, serves `/api/models`, the PaplyAI `/api/skills` catalog and artifacts, liveness/readiness endpoints, and streams `/v1/*` to LiteLLM.
 - The skills catalog is a desktop compatibility surface, not part of token accounting. Local artifact paths are resolved below the mounted catalog root, symlinks are rejected, and generated downloads must remain under the desktop's 50 MB artifact limit.
 - `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key.
 - The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.
@@ -28,6 +28,7 @@
 - The same configured Gateway origin supplies `GET /api/skills`; available local catalog entries are materialized as Gateway artifact URLs and local filesystem paths never cross the public API.
 - The document contains only model metadata and the public Gateway `/v1` base URL. It never contains provider credentials, LiteLLM credentials, or a Paply session.
 - The desktop authenticates `/api/models` and `/v1/*` with a short-lived Paply access token. This is an application login session, not a model API key.
+- Registration provisions one stable LiteLLM user with `auto_create_key=false`; it never creates a client virtual key. The desktop encrypts the refresh token in the OS keychain-backed Electron safe storage and keeps the access token in the main process only.
 - The edge validates the Paply session, strips caller-supplied internal identity headers, and derives a stable user id. Only the edge may forward that identity to the private LiteLLM listener.
 - Gateway-to-LiteLLM calls use one server-only service credential. LiteLLM custom auth maps the trusted user id into its usage and budget records; users are accounting identities, not virtual keys.
 
