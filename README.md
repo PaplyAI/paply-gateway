@@ -45,7 +45,7 @@ docker compose up -d --build
 curl http://127.0.0.1:4387/health/ready
 ```
 
-Paply 中文管理台仅绑定本机：<http://127.0.0.1:4390>。登录账号由 `.env` 的 `PAPLY_ADMIN_USERNAME` / `PAPLY_ADMIN_PASSWORD` 配置。已汉化的 LiteLLM 原生高级运维后台位于 <http://127.0.0.1:4000/ui>，由单独的 `LITELLM_UI_USERNAME` / `LITELLM_UI_PASSWORD` 登录。对外客户端入口是 <http://127.0.0.1:4387>。
+Paply 中文管理台默认仅绑定本机：<http://127.0.0.1:4390>。登录账号由 `.env` 的 `PAPLY_ADMIN_USERNAME` / `PAPLY_ADMIN_PASSWORD` 配置。LiteLLM 原生高级运维后台默认位于 <http://127.0.0.1:4000/ui>，由单独的 `LITELLM_UI_USERNAME` / `LITELLM_UI_PASSWORD` 登录。临时通过 IP 和端口开放运维 UI 时，将 `PAPLY_LITELLM_UI_BIND_ADDRESS=0.0.0.0` 和 `PAPLY_LITELLM_UI_PUBLIC_URL=http://<server-ip>:4000` 一并设置；Paply 管理台的模型配置区域会显示跳转入口。对外客户端入口是 <http://127.0.0.1:4387>。
 
 ## 内部账号注册与登录
 

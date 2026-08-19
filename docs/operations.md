@@ -16,7 +16,7 @@ Public production ingress should expose only:
 - `GET /api/skills/{skill-id}/artifact`
 - the required `/v1/*` OpenAI-compatible routes
 
-LiteLLM port `4000`, `/ui`, master-key endpoints, PostgreSQL, and Redis belong on the operator network. Local Compose binds LiteLLM to `127.0.0.1` and does not publish either database.
+LiteLLM port `4000`, `/ui`, master-key endpoints, PostgreSQL, and Redis belong on the operator network. Local Compose binds LiteLLM to `127.0.0.1` by default and does not publish either database. A temporary IP-and-port operator setup may set `PAPLY_LITELLM_UI_BIND_ADDRESS=0.0.0.0` and `PAPLY_LITELLM_UI_PUBLIC_URL=http://<server-ip>:4000`; do not expose PostgreSQL or Redis. Move this endpoint behind HTTPS before any non-temporary deployment.
 
 ## User accounting model
 

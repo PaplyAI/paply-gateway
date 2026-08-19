@@ -21,6 +21,7 @@ services:
       PAPLY_DEFAULT_USER_BUDGET_DURATION: ${PAPLY_DEFAULT_USER_BUDGET_DURATION:-30d}
       PAPLY_LITELLM_SERVICE_TOKEN: ${PAPLY_LITELLM_SERVICE_TOKEN}
       PAPLY_PUBLIC_BASE_URL: ${PAPLY_PUBLIC_BASE_URL}
+      PAPLY_LITELLM_UI_PUBLIC_URL: ${PAPLY_LITELLM_UI_PUBLIC_URL:-}
       PAPLY_UPSTREAM_TIMEOUT_SECONDS: ${PAPLY_UPSTREAM_TIMEOUT_SECONDS:-600}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
     ports:
@@ -116,7 +117,7 @@ services:
     volumes:
       - ./config/litellm.yaml:/app/config.yaml:ro
     ports:
-      - "127.0.0.1:4000:4000"
+      - "${PAPLY_LITELLM_UI_BIND_ADDRESS:-127.0.0.1}:4000:4000"
     depends_on:
       postgres:
         condition: service_healthy

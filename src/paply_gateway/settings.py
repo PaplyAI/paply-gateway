@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     paply_environment: Literal["development", "staging", "production"] = "development"
     paply_litellm_url: str = "http://127.0.0.1:4000"
+    paply_litellm_ui_public_url: str | None = None
     paply_public_base_url: str = "http://127.0.0.1:4387"
     paply_models_config_path: Path = Path("config/paply-models.yaml")
     paply_skills_catalog_path: Path | None = None
@@ -42,6 +43,10 @@ class Settings(BaseSettings):
         self.paply_public_base_url = self._validate_origin(
             self.paply_public_base_url, "PAPLY_PUBLIC_BASE_URL"
         )
+        if self.paply_litellm_ui_public_url is not None:
+            self.paply_litellm_ui_public_url = self._validate_origin(
+                self.paply_litellm_ui_public_url, "PAPLY_LITELLM_UI_PUBLIC_URL"
+            )
         if self.paply_upstream_timeout_seconds <= 0:
             raise ValueError("PAPLY_UPSTREAM_TIMEOUT_SECONDS must be greater than zero")
         if (

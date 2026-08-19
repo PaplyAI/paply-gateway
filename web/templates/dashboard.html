@@ -65,7 +65,9 @@
     </section>
 
     <section id="models" class="panel">
-      <div class="panel-header"><div><p class="eyebrow">路由配置</p><h2>模型服务</h2><p>客户端只看到稳定的 Paply 模型别名，上游模型可独立调整。</p></div></div>
+      <div class="panel-header"><div><p class="eyebrow">路由配置</p><h2>模型服务</h2><p>客户端只使用稳定别名；上游、凭据、权重与故障转移统一在 LiteLLM 控制台维护。</p></div>
+        {% if litellm_ui_url %}<a class="secondary-button" href="{{ litellm_ui_url }}/ui" target="_blank" rel="noopener noreferrer">打开 LiteLLM 控制台 ↗</a>{% endif %}
+      </div>
       <div class="model-grid">
       {% for model in data.models %}
         <article class="model-card"><div class="model-symbol">✦</div><div><strong>{{ model.name }}</strong><span>{{ model.upstream }}</span></div><span class="state-chip">在线</span></article>

@@ -16,6 +16,7 @@ def admin_settings(tmp_path: Path) -> Settings:
     return Settings(
         paply_environment="development",
         paply_litellm_url="http://litellm.test",
+        paply_litellm_ui_public_url="http://litellm-ui.test:4000",
         paply_public_base_url="http://gateway.test",
         paply_models_config_path=config,
         paply_admin_username="paply_test",
@@ -137,6 +138,7 @@ def test_admin_login_renders_usage_dashboard_without_exposing_master_key(
     assert "输入 100,000 · 输出 25,000" in dashboard.text
     assert "成功 46 · 失败 2" in dashboard.text
     assert "test-master-key" not in dashboard.text
+    assert 'href="http://litellm-ui.test:4000/ui"' in dashboard.text
 
 
 def test_logout_clears_admin_session(tmp_path: Path) -> None:

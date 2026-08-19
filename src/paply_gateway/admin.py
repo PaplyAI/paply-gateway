@@ -227,6 +227,7 @@ def create_admin_app(
                     "data": data,
                     "username": runtime_settings.paply_admin_username,
                     "version": __version__,
+                    "litellm_ui_url": runtime_settings.paply_litellm_ui_public_url,
                 },
             )
         except (httpx.RequestError, httpx.HTTPStatusError) as error:
@@ -241,6 +242,7 @@ def create_admin_app(
                     "data": None,
                     "username": runtime_settings.paply_admin_username,
                     "version": __version__,
+                    "litellm_ui_url": runtime_settings.paply_litellm_ui_public_url,
                     "error": "暂时无法读取 LiteLLM 用量数据，请检查服务状态后重试。",
                 },
                 status_code=503,
