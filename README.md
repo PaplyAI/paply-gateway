@@ -31,6 +31,7 @@ Paply Desktop
 - 用户注册时自动创建稳定的 LiteLLM 计量用户，并强制 `auto_create_key=false`；账号、密码和模型密钥不会写进客户端配置。
 - Gateway 不记录 prompt、response、Authorization 或请求体。
 - `/v1/*` 不自动重试，避免一次客户端请求产生重复计费。
+- `paply-image` 仍通过 LiteLLM 的 DashScope provider 计量；Gateway 只把百炼返回的临时图片 URL 转成 Desktop 需要的 `b64_json`。固定版本缺少的图生图转换封装在 LiteLLM 包装镜像中，文生图与图生图共用同一 deployment。
 
 ## 本地启动
 
@@ -93,6 +94,7 @@ docker compose config --quiet
 ## 配置入口
 
 - `config/litellm.yaml`：LiteLLM 的认证、数据库、Redis 和 Router 基础配置；上游 deployment 不写入该文件。
+- `config/litellm_dashscope_image_edit.py`：固定 LiteLLM 版本的百炼 Qwen-Image 图生图兼容层；升级 LiteLLM 时必须重新评估并优先删除。
 - `config/paply-models.yaml`：下发给 desktop 的模型能力元数据，不含任何密钥。
 - Paply Gateway 管理台：日常维护上游模型、Base URL、API Key、权重、启停与 RPM/TPM；所有变更通过 LiteLLM 管理 API 写入 PostgreSQL，同一 `paply-*` 公开别名下的多个 deployment 由 LiteLLM Router 负载均衡。
 - LiteLLM 原生控制台：仅用于 Paply 管理台尚未覆盖的高级诊断和底层能力。

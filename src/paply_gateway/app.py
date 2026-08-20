@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
 from paply_gateway import __version__
@@ -51,6 +52,7 @@ HOP_BY_HOP_HEADERS = {
 AUTH_ATTEMPTS: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 AUTH_WINDOW_SECONDS = 300
 AUTH_MAX_ATTEMPTS = 10
+MAX_GENERATED_IMAGE_BYTES = 24 * 1024 * 1024
 
 
 def _request_id(request: Request) -> str:
@@ -90,6 +92,65 @@ def _forward_headers(headers: httpx.Headers) -> dict[str, str]:
         for name, value in headers.items()
         if name.lower() not in HOP_BY_HOP_HEADERS and name.lower() != "content-length"
     }
+
+
+def _litellm_proxy_headers(request: Request, service_token: str, user_id: str) -> dict[str, str]:
+    headers = {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() not in HOP_BY_HOP_HEADERS
+        and name.lower()
+        not in {
+            "host",
+            "content-length",
+            "authorization",
+            "x-paply-user-id",
+            "x-paply-service",
+        }
+    }
+    headers["authorization"] = f"Bearer {service_token}"
+    headers["x-paply-user-id"] = user_id
+    headers["x-request-id"] = request.state.request_id
+    return headers
+
+
+async def _add_image_base64_data(
+    client: httpx.AsyncClient,
+    document: Any,
+    request_id: str,
+) -> Any:
+    rows = document.get("data") if isinstance(document, dict) else None
+    if not isinstance(rows, list):
+        return document
+    for row in rows:
+        image_url = row.get("url") if isinstance(row, dict) else None
+        if not isinstance(image_url, str) or row.get("b64_json"):
+            continue
+        parsed = httpx.URL(image_url)
+        if (
+            parsed.scheme != "https"
+            or not isinstance(parsed.host, str)
+            or not parsed.host.endswith(".aliyuncs.com")
+        ):
+            _json_log("image_result_url_rejected", request_id=request_id)
+            raise HTTPException(status_code=502, detail="Image provider returned an unsafe URL")
+        try:
+            response = await client.get(image_url, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise HTTPException(status_code=502, detail="Image result download failed") from error
+        content_type = response.headers.get("content-type", "").split(";", 1)[0]
+        if (
+            not content_type.startswith("image/")
+            or len(response.content) > MAX_GENERATED_IMAGE_BYTES
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail="Image provider returned invalid image data",
+            )
+        row["b64_json"] = base64.b64encode(response.content).decode("ascii")
+        row["mime_type"] = content_type
+    return document
 
 
 def create_app(
@@ -415,32 +476,60 @@ def create_app(
         )
 
     @application.api_route(
+        "/v1/images/{operation}",
+        methods=["POST"],
+    )
+    async def proxy_openai_image_route(operation: str, request: Request) -> Response:
+        if operation not in {"generations", "edits"}:
+            raise HTTPException(status_code=404, detail="Image operation was not found")
+        identity = bearer_identity(request, runtime_settings)
+        client: httpx.AsyncClient = request.app.state.http_client
+        upstream_request = client.build_request(
+            request.method,
+            f"{runtime_settings.paply_litellm_url}/v1/images/{operation}",
+            headers=_litellm_proxy_headers(
+                request,
+                runtime_settings.litellm_service_token,
+                identity.user_id,
+            ),
+            content=request.stream(),
+            params=request.query_params.multi_items(),
+        )
+        try:
+            upstream_response = await client.send(upstream_request)
+        except httpx.RequestError as error:
+            raise HTTPException(status_code=502, detail="LiteLLM image request failed") from error
+        if upstream_response.is_error:
+            return Response(
+                content=upstream_response.content,
+                status_code=upstream_response.status_code,
+                headers=_forward_headers(upstream_response.headers),
+            )
+        try:
+            document = upstream_response.json()
+        except ValueError as error:
+            raise HTTPException(
+                status_code=502,
+                detail="LiteLLM image response was invalid",
+            ) from error
+        document = await _add_image_base64_data(client, document, request.state.request_id)
+        return JSONResponse(content=document)
+
+    @application.api_route(
         "/v1/{upstream_path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     )
     async def proxy_openai_route(upstream_path: str, request: Request) -> StreamingResponse:
         identity = bearer_identity(request, runtime_settings)
         client: httpx.AsyncClient = request.app.state.http_client
-        headers = {
-            name: value
-            for name, value in request.headers.items()
-            if name.lower() not in HOP_BY_HOP_HEADERS
-            and name.lower()
-            not in {
-                "host",
-                "content-length",
-                "authorization",
-                "x-paply-user-id",
-                "x-paply-service",
-            }
-        }
-        headers["authorization"] = f"Bearer {runtime_settings.litellm_service_token}"
-        headers["x-paply-user-id"] = identity.user_id
-        headers["x-request-id"] = request.state.request_id
         upstream_request = client.build_request(
             request.method,
             f"{runtime_settings.paply_litellm_url}/v1/{upstream_path}",
-            headers=headers,
+            headers=_litellm_proxy_headers(
+                request,
+                runtime_settings.litellm_service_token,
+                identity.user_id,
+            ),
             content=request.stream(),
             params=request.query_params.multi_items(),
         )

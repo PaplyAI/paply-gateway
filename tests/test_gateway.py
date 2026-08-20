@@ -1,3 +1,4 @@
+import base64
 import json
 import tarfile
 from pathlib import Path
@@ -279,6 +280,43 @@ def test_proxy_preserves_streaming_body_status_and_maps_server_side_identity(
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["x-request-id"] == "stream-request"
     assert response.content == b"data: first\n\ndata: [DONE]\n\n"
+
+
+def test_image_proxy_preserves_accounting_identity_and_materializes_base64(
+    config_path: Path,
+) -> None:
+    png = b"\x89PNG\r\n\x1a\n" + b"test-image"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "litellm.test":
+            assert request.url.path == "/v1/images/generations"
+            assert request.headers["authorization"] == "Bearer test-internal-service-token"
+            assert request.headers["x-paply-user-id"] == "user-alice"
+            return httpx.Response(
+                200,
+                json={
+                    "created": 1,
+                    "data": [
+                        {
+                            "url": "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/test.png"
+                        }
+                    ],
+                },
+            )
+        assert request.url.host == "dashscope-result-bj.oss-cn-beijing.aliyuncs.com"
+        return httpx.Response(200, content=png, headers={"content-type": "image/png"})
+
+    app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/images/generations",
+            headers={"authorization": f"Bearer {access_token()}"},
+            json={"model": "paply-image", "prompt": "test", "response_format": "b64_json"},
+        )
+
+    assert response.status_code == 200
+    assert base64.b64decode(response.json()["data"][0]["b64_json"]) == png
+    assert response.json()["data"][0]["mime_type"] == "image/png"
 
 
 def test_readiness_surfaces_litellm_failure(config_path: Path) -> None:

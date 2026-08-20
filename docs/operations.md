@@ -44,6 +44,13 @@ Chat, vision, and image generation deployments are stored in LiteLLM's PostgreSQ
 
 Provider credentials stay only in the `litellm` container. Do not put a domestic provider key into `config/paply-models.yaml`, a desktop setting, or the public Gateway response.
 
+`paply-image` uses the LiteLLM `dashscope/qwen-image-2.0` deployment with the
+full workspace multimodal-generation URL as `api_base`. Generation and edit
+requests both enter through LiteLLM, so the same user identity, budget checks,
+spend logs, and encrypted provider credential apply. The pinned wrapper's
+`litellm_dashscope_image_edit.py` supplies the missing edit transform; verify
+both `/v1/images/generations` and `/v1/images/edits` before every deployment.
+
 Legacy deployments marked `Defined in config` must be migrated before removing
 the static `model_list`. Run `scripts/migrate_static_models.py` without
 `--apply`, review the plan, take a PostgreSQL backup, run it again with

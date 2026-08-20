@@ -3,6 +3,9 @@ import os
 
 from fastapi import HTTPException, Request
 from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+from litellm_dashscope_image_edit import install_dashscope_image_edit
+
+install_dashscope_image_edit()
 
 
 def _required_env(name: str) -> str:
