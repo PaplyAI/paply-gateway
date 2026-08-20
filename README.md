@@ -34,7 +34,7 @@ Paply Desktop
 
 ## 本地启动
 
-要求 Docker Compose v2、Python 3.12（仅本地脚本/测试需要）。
+要求 Docker Compose v2、Python 3.12（仅本地脚本/测试需要）。Docker 镜像会在独立 Node 构建阶段编译管理前端，不要求宿主机安装 Node。
 
 本地默认假设 `paply-gateway` 与 `paplyai-skills-catalog` 两个仓库同级放置；若目录不同，通过 `PAPLY_SKILLS_CATALOG_HOST_PATH` 指向技能目录仓库。
 
@@ -75,13 +75,20 @@ Gateway 模型协议为 `schemaVersion: 2`。`/api/models` 与 `/v1/*` 都使用
 ## 开发验证
 
 ```bash
+cd admin-ui
+pnpm install --frozen-lockfile
+pnpm run lint
+pnpm run build
+cd ..
 python -m venv .venv
 .venv/bin/python -m pip install '.[dev]'
 .venv/bin/ruff check src tests scripts
-.venv/bin/pytest
+.venv/bin/python -m pytest
 cp .env.example .env
 docker compose config --quiet
 ```
+
+管理前端位于 `admin-ui/`，生产构建输出到 `web/static/admin-app/`（该目录不提交 Git）。其 Octopus 上游提交、修改范围与 AGPL-3.0 源码许可见 `admin-ui/UPSTREAM.md` 和 `admin-ui/LICENSE`。
 
 ## 配置入口
 

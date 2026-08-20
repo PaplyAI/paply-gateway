@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#eae9e3" />
+    <meta name="application-name" content="Paply Gateway" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Paply Gateway" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-status-bar-style" content="black" />
+    <meta name="mobile-web-app-title" content="Paply Gateway" />
+    <link rel="icon" href="/static/admin-app/paplyai-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/static/admin-app/paplyai-logo.png" />
+    <title>Paply Gateway</title>
+    <script>
+      const theme = localStorage.getItem('theme');
+      const isDark =
+        theme === 'dark' ||
+        ((theme === null || theme === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const root = document.documentElement;
+      root.classList.toggle('dark', isDark);
+      root.style.colorScheme = isDark ? 'dark' : 'light';
+      document.querySelector('meta[name="theme-color"]')?.setAttribute(
+        'content',
+        isDark ? '#413a2c' : '#eae9e3',
+      );
+    </script>
+    <style>
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: oklch(0.9331 0.0081 98.8844);
+        color: oklch(0.6205 0.1199 144.8607);
+        transition: opacity 200ms ease;
+      }
+      html.dark #initial-loader {
+        background: oklch(0.2809 0.0264 153.4040);
+        color: oklch(0.6990 0.1292 144.8727);
+      }
+      #initial-loader.octo-hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #initial-loader img { width: 96px; height: 96px; border-radius: 28px; animation: paplyPulse 1.6s ease-in-out infinite; }
+      @keyframes paplyPulse { 0%, 100% { opacity: .72; transform: scale(.96); } 50% { opacity: 1; transform: scale(1); } }
+
+      @media (prefers-reduced-motion: reduce) {
+        #initial-loader img {
+          animation: none !important;
+          opacity: 1 !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="antialiased">
+    <div id="initial-loader" role="status" aria-label="正在加载 Paply Gateway"><img src="/static/admin-app/paplyai-logo.png" alt="" /></div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

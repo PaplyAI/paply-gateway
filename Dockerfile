@@ -1,3 +1,12 @@
+FROM node:24.18.1-slim AS admin-ui-build
+
+WORKDIR /workspace/admin-ui
+RUN npm install --global pnpm@11.19.0
+COPY admin-ui/package.json admin-ui/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY admin-ui ./
+RUN pnpm run build
+
 FROM python:3.12.11-slim AS runtime
 
 ARG PIP_INDEX_URL=https://pypi.org/simple
@@ -21,6 +30,7 @@ RUN python -m pip install --index-url "${PIP_INDEX_URL}" --upgrade pip \
 COPY config ./config
 COPY scripts/create_access_token.py ./scripts/create_access_token.py
 COPY web ./web
+COPY --from=admin-ui-build /workspace/web/static/admin-app ./web/static/admin-app
 
 USER paply
 EXPOSE 4387

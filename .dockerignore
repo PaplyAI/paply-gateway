@@ -6,3 +6,5 @@
 .venv
 __pycache__
 tests
+admin-ui/node_modules
+web/static/admin-app

@@ -1,5 +1,4 @@
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -48,20 +47,15 @@ imageGen:
     )
 
 
-def login(client: TestClient) -> None:
+def login(client: TestClient) -> str:
     response = client.post(
-        "/login",
-        data={"username": "paply_test", "password": "test-admin-password"},
-        follow_redirects=False,
+        "/api/admin/session",
+        json={"username": "paply_test", "password": "test-admin-password"},
     )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/overview"
-
-
-def csrf_from(document: str) -> str:
-    match = re.search(r'name="csrf_token" value="([^"]+)"', document)
-    assert match
-    return match.group(1)
+    assert response.status_code == 200
+    document = response.json()["data"]
+    assert document["authenticated"] is True
+    return str(document["csrf_token"])
 
 
 def overview_handler(request: httpx.Request) -> httpx.Response:
@@ -103,6 +97,7 @@ def overview_handler(request: httpx.Request) -> httpx.Response:
                         "litellm_params": {
                             "model": "openai/deepseek-v4-flash",
                             "api_base": "https://aliyun.test/v1",
+                            "api_key": "provider-secret-must-never-render",
                         },
                         "model_info": {"id": "deployment-two", "db_model": True},
                     },
@@ -127,98 +122,87 @@ def overview_handler(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"unexpected upstream call: {request.url}")
 
 
-def test_unauthenticated_pages_redirect_to_login(tmp_path: Path) -> None:
+def test_spa_shell_is_public_but_admin_api_requires_session(tmp_path: Path) -> None:
     app = create_admin_app(
         admin_settings(tmp_path),
         transport=httpx.MockTransport(lambda request: httpx.Response(500)),
     )
     with TestClient(app) as client:
-        for path in ("/", "/overview", "/users", "/models", "/system"):
-            response = client.get(path, follow_redirects=False)
-            assert response.status_code == 303
-            assert response.headers["location"] == "/login"
-        login_page = client.get("/login")
+        for path in ("/", "/overview", "/users", "/models", "/system", "/login"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert "Paply Gateway" in response.text
+            assert "/static/admin-app/" in response.text
+        session = client.get("/api/admin/session")
+        protected = client.get("/api/admin/overview")
 
-    assert login_page.status_code == 200
-    assert "Paply Gateway" in login_page.text
-    assert "管理员账号" in login_page.text
+    assert session.json() == {"data": {"authenticated": False}}
+    assert protected.status_code == 401
 
 
-def test_invalid_admin_credentials_are_visible(tmp_path: Path) -> None:
+def test_invalid_admin_credentials_are_visible_without_secret_echo(tmp_path: Path) -> None:
     app = create_admin_app(
         admin_settings(tmp_path),
         transport=httpx.MockTransport(lambda request: httpx.Response(500)),
     )
     with TestClient(app) as client:
         response = client.post(
-            "/login",
-            data={"username": "paply_test", "password": "wrong-password"},
+            "/api/admin/session",
+            json={"username": "paply_test", "password": "wrong-password"},
         )
 
     assert response.status_code == 401
-    assert "账号或密码不正确" in response.text
+    assert "账号或密码不正确" in response.json()["detail"]
+    assert "wrong-password" not in response.text
 
 
-def test_overview_is_a_distinct_page_and_does_not_expose_master_key(tmp_path: Path) -> None:
+def test_session_and_overview_api_do_not_expose_credentials(tmp_path: Path) -> None:
     app = create_admin_app(
         admin_settings(tmp_path),
         transport=httpx.MockTransport(overview_handler),
     )
     with TestClient(app) as client:
-        login(client)
-        root = client.get("/", follow_redirects=False)
-        page = client.get("/overview")
+        csrf = login(client)
+        session = client.get("/api/admin/session")
+        overview = client.get("/api/admin/overview")
 
-    assert root.status_code == 303
-    assert root.headers["location"] == "/overview"
-    assert page.status_code == 200
-    assert "运行概览" in page.text
-    assert "125,000" in page.text
-    assert "1 / 2" in page.text
-    assert 'href="/users"' in page.text
-    assert 'href="/models"' in page.text
-    assert 'href="#users"' not in page.text
-    assert "test-master-key" not in page.text
+    assert session.status_code == overview.status_code == 200
+    assert session.json()["data"]["csrf_token"] == csrf
+    assert session.json()["data"]["allowed_models"] == [
+        "paply-chat",
+        "paply-image",
+        "paply-vision",
+    ]
+    data = overview.json()["data"]
+    assert data["total_tokens"] == "125,000"
+    assert data["model_group_count"] == 1
+    assert data["deployment_count"] == 2
+    assert "test-master-key" not in overview.text
+    assert "provider-secret-must-never-render" not in overview.text
 
 
-def test_users_page_has_budget_controls(tmp_path: Path) -> None:
+def test_users_and_models_api_return_control_plane_data_only(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/user/list"
         return overview_handler(request)
 
     app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
     with TestClient(app) as client:
         login(client)
-        page = client.get("/users")
+        users = client.get("/api/admin/users")
+        models = client.get("/api/admin/models")
 
-    assert page.status_code == 200
-    assert "用户与预算" in page.text
-    assert "论文测试账号" in page.text
-    assert "最大并发" in page.text
-    assert "test-master-key" not in page.text
-
-
-def test_models_page_groups_deployments_without_exposing_credentials(tmp_path: Path) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/model/info"
-        return overview_handler(request)
-
-    app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
-    with TestClient(app) as client:
-        login(client)
-        page = client.get("/models")
-
-    assert page.status_code == 200
-    assert "模型与节点" in page.text
-    assert "paply-chat" in page.text
-    assert "api.deepseek.test" in page.text
-    assert "aliyun.test" in page.text
-    assert "新增节点" in page.text
-    assert "simple-shuffle" in page.text
-    assert "test-master-key" not in page.text
+    assert users.status_code == models.status_code == 200
+    assert users.json()["data"]["users"][0]["alias"] == "论文测试账号"
+    group = models.json()["data"]["groups"][0]
+    assert group["name"] == "paply-chat"
+    assert group["deployment_count"] == 2
+    assert group["deployments"][0]["provider"] in {"api.deepseek.test", "aliyun.test"}
+    assert "api_key" not in models.text
+    assert "provider-secret-must-never-render" not in models.text
+    assert "test-master-key" not in models.text
 
 
-def test_system_page_checks_gateway_and_litellm(tmp_path: Path) -> None:
+def test_system_api_checks_gateway_and_litellm(tmp_path: Path) -> None:
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -228,49 +212,44 @@ def test_system_page_checks_gateway_and_litellm(tmp_path: Path) -> None:
     app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
     with TestClient(app) as client:
         login(client)
-        page = client.get("/system")
+        response = client.get("/api/admin/system")
 
-    assert page.status_code == 200
-    assert "系统状态" in page.text
-    assert "全部正常" in page.text
+    assert response.status_code == 200
+    assert response.json()["data"]["healthy"] is True
     assert len(seen) == 4
     assert "http://gateway.test/health/ready" in seen
     assert "http://litellm.test/health/readiness" in seen
 
 
-def test_create_deployment_validates_csrf_and_sends_write_only_key(tmp_path: Path) -> None:
+def test_create_deployment_requires_csrf_and_sends_write_only_key(tmp_path: Path) -> None:
     created: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/model/info":
-            return httpx.Response(200, json={"data": []})
-        if request.url.path == "/model/new":
-            created.update(json.loads(request.content))
-            return httpx.Response(200, json={"message": "created"})
-        raise AssertionError(f"unexpected upstream call: {request.url}")
+        assert request.url.path == "/model/new"
+        created.update(json.loads(request.content))
+        return httpx.Response(200, json={"message": "created"})
 
+    payload = {
+        "model_name": "paply-chat",
+        "upstream_model": "openai/deepseek-v4-flash",
+        "api_base": "https://provider.test/v1/",
+        "api_key": "provider-secret",
+        "weight": "2",
+        "rpm": "60",
+        "tpm": "12000",
+    }
     app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
     with TestClient(app) as client:
-        login(client)
-        models = client.get("/models")
-        csrf = csrf_from(models.text)
+        csrf = login(client)
+        rejected = client.post("/api/admin/deployments", json=payload)
         response = client.post(
-            "/models/deployments",
-            data={
-                "csrf_token": csrf,
-                "model_name": "paply-chat",
-                "upstream_model": "openai/deepseek-v4-flash",
-                "api_base": "https://provider.test/v1/",
-                "api_key": "provider-secret",
-                "weight": "2",
-                "rpm": "60",
-                "tpm": "12000",
-            },
-            follow_redirects=False,
+            "/api/admin/deployments",
+            json=payload,
+            headers={"X-CSRF-Token": csrf},
         )
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/models"
+    assert rejected.status_code == 403
+    assert response.status_code == 200
     assert created["model_name"] == "paply-chat"
     assert created["litellm_params"] == {
         "model": "openai/deepseek-v4-flash",
@@ -284,7 +263,7 @@ def test_create_deployment_validates_csrf_and_sends_write_only_key(tmp_path: Pat
     assert "provider-secret" not in response.text
 
 
-def test_model_mutations_and_connection_test_use_deployment_id(tmp_path: Path) -> None:
+def test_model_mutations_and_health_use_deployment_id(tmp_path: Path) -> None:
     calls: list[tuple[str, str, Any]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -294,26 +273,23 @@ def test_model_mutations_and_connection_test_use_deployment_id(tmp_path: Path) -
 
     app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
     with TestClient(app) as client:
-        login(client)
-        page = client.get("/models")
-        csrf = csrf_from(page.text)
-        toggle = client.post(
-            "/models/deployments/deployment-one/toggle",
-            data={"csrf_token": csrf, "blocked": "true"},
-            follow_redirects=False,
+        csrf = login(client)
+        headers = {"X-CSRF-Token": csrf}
+        toggle = client.patch(
+            "/api/admin/deployments/deployment-one/state",
+            json={"blocked": True},
+            headers=headers,
         )
-        test = client.post(
-            "/models/deployments/deployment-one/test",
-            data={"csrf_token": csrf},
-            follow_redirects=False,
+        tested = client.post(
+            "/api/admin/deployments/deployment-one/test",
+            headers=headers,
         )
-        delete = client.post(
-            "/models/deployments/deployment-one/delete",
-            data={"csrf_token": csrf},
-            follow_redirects=False,
+        deleted = client.delete(
+            "/api/admin/deployments/deployment-one",
+            headers=headers,
         )
 
-    assert toggle.status_code == test.status_code == delete.status_code == 303
+    assert toggle.status_code == tested.status_code == deleted.status_code == 200
     assert (
         "POST",
         "/model/update",
@@ -323,143 +299,89 @@ def test_model_mutations_and_connection_test_use_deployment_id(tmp_path: Path) -
     assert ("POST", "/model/delete", {"id": "deployment-one"}) in calls
 
 
-def test_connection_test_does_not_treat_http_200_as_healthy(tmp_path: Path) -> None:
+def test_health_result_uses_litellm_endpoint_lists_without_leaking_error(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/model/info":
-            return overview_handler(request)
-        if request.url.path == "/health":
-            assert request.url.params["model_id"] == "deployment-one"
-            return httpx.Response(
-                200,
-                json={
-                    "healthy_endpoints": [],
-                    "unhealthy_endpoints": [
-                        {
-                            "model_id": "deployment-one",
-                            "error": "provider-secret-must-never-render",
-                        }
-                    ],
-                },
-            )
-        raise AssertionError(f"unexpected upstream call: {request.url}")
+        assert request.url.path == "/health"
+        return httpx.Response(
+            200,
+            json={
+                "healthy_endpoints": [],
+                "unhealthy_endpoints": [
+                    {"model_id": "deployment-one", "error": "provider-secret"}
+                ],
+            },
+        )
 
     app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
     with TestClient(app) as client:
-        login(client)
-        page = client.get("/models")
+        csrf = login(client)
         response = client.post(
-            "/models/deployments/deployment-one/test",
-            data={"csrf_token": csrf_from(page.text)},
-            follow_redirects=True,
+            "/api/admin/deployments/deployment-one/test",
+            headers={"X-CSRF-Token": csrf},
         )
 
     assert response.status_code == 200
-    assert "节点检测未通过：上游检查失败" in response.text
-    assert "health-unhealthy" in response.text
-    assert "provider-secret-must-never-render" not in response.text
-
-
-def test_bulk_health_refresh_caches_each_active_deployment_state(tmp_path: Path) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/model/info":
-            return overview_handler(request)
-        if request.url.path == "/health":
-            deployment_id = request.url.params["model_id"]
-            bucket = (
-                "healthy_endpoints"
-                if deployment_id == "deployment-one"
-                else "unhealthy_endpoints"
-            )
-            return httpx.Response(
-                200,
-                json={
-                    "healthy_endpoints": (
-                        [{"model_id": deployment_id}] if bucket == "healthy_endpoints" else []
-                    ),
-                    "unhealthy_endpoints": (
-                        [{"model_id": deployment_id}] if bucket == "unhealthy_endpoints" else []
-                    ),
-                },
-            )
-        raise AssertionError(f"unexpected upstream call: {request.url}")
-
-    app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
-    with TestClient(app) as client:
-        login(client)
-        page = client.get("/models")
-        response = client.post(
-            "/models/health/refresh",
-            data={"csrf_token": csrf_from(page.text)},
-            follow_redirects=True,
-        )
-
-    assert response.status_code == 200
-    assert "1 个健康，1 个异常，0 个未知" in response.text
-    assert response.text.count("health-healthy") == 1
-    assert response.text.count("health-unhealthy") == 1
-    assert "节点健康" in response.text
-    assert "上游检查失败" in response.text
+    assert response.json()["data"]["health"]["state"] == "unhealthy"
+    assert response.json()["data"]["health"]["label"] == "上游检查失败"
+    assert "provider-secret" not in response.text
 
 
 def test_update_user_budget_is_csrf_protected(tmp_path: Path) -> None:
     payloads: list[dict[str, Any]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/user/list":
-            return overview_handler(request)
-        if request.url.path == "/user/update":
-            payloads.append(json.loads(request.content))
-            return httpx.Response(200, json={"user_id": "user_test"})
-        raise AssertionError(f"unexpected upstream call: {request.url}")
+        assert request.url.path == "/user/update"
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"user_id": "user_test"})
 
+    payload = {
+        "max_budget": "25",
+        "budget_duration": "30d",
+        "rpm_limit": "20",
+        "tpm_limit": "",
+        "max_parallel_requests": "3",
+        "blocked": False,
+    }
     app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
     with TestClient(app) as client:
-        login(client)
-        page = client.get("/users")
-        csrf = csrf_from(page.text)
-        rejected = client.post(
-            "/users/user_test/budget",
-            data={"csrf_token": "invalid", "max_budget": "25", "budget_duration": "30d"},
-            follow_redirects=False,
-        )
-        accepted = client.post(
-            "/users/user_test/budget",
-            data={
-                "csrf_token": csrf,
-                "max_budget": "25",
-                "budget_duration": "30d",
-                "rpm_limit": "30",
-                "tpm_limit": "6000",
-                "max_parallel_requests": "2",
-                "blocked": "false",
-            },
-            follow_redirects=False,
+        csrf = login(client)
+        rejected = client.patch("/api/admin/users/user_test", json=payload)
+        response = client.patch(
+            "/api/admin/users/user_test",
+            json=payload,
+            headers={"X-CSRF-Token": csrf},
         )
 
-    assert rejected.status_code == accepted.status_code == 303
-    assert len(payloads) == 1
-    assert payloads[0]["user_id"] == "user_test"
-    assert payloads[0]["max_budget"] == 25.0
-    assert payloads[0]["rpm_limit"] == 30
-    assert payloads[0]["tpm_limit"] == 6000
+    assert rejected.status_code == 403
+    assert response.status_code == 200
+    assert payloads == [
+        {
+            "user_id": "user_test",
+            "max_budget": 25.0,
+            "budget_duration": "30d",
+            "rpm_limit": 20,
+            "tpm_limit": None,
+            "max_parallel_requests": 3,
+            "blocked": False,
+        }
+    ]
 
 
 def test_logout_requires_csrf_and_clears_session(tmp_path: Path) -> None:
     app = create_admin_app(
         admin_settings(tmp_path),
-        transport=httpx.MockTransport(overview_handler),
+        transport=httpx.MockTransport(lambda request: httpx.Response(500)),
     )
     with TestClient(app) as client:
-        login(client)
-        page = client.get("/overview")
-        csrf = csrf_from(page.text)
-        logout = client.post(
-            "/logout",
-            data={"csrf_token": csrf},
-            follow_redirects=False,
+        csrf = login(client)
+        rejected = client.delete("/api/admin/session")
+        response = client.delete(
+            "/api/admin/session",
+            headers={"X-CSRF-Token": csrf},
         )
-        protected = client.get("/overview", follow_redirects=False)
+        protected = client.get("/api/admin/overview")
 
-    assert logout.status_code == 303
-    assert protected.status_code == 303
-    assert protected.headers["location"] == "/login"
+    assert rejected.status_code == 403
+    assert response.status_code == 200
+    assert response.json() == {"data": {"authenticated": False}}
+    assert protected.status_code == 401

@@ -17,6 +17,20 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.1"
+          cache: pnpm
+          cache-dependency-path: admin-ui/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: admin-ui
+      - run: pnpm run lint
+        working-directory: admin-ui
+      - run: pnpm run build
+        working-directory: admin-ui
       - run: python -m pip install --upgrade pip
       - run: python -m pip install '.[dev]'
       - run: ruff check src tests scripts

@@ -14,10 +14,11 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
 from paply_gateway import __version__
@@ -26,6 +27,7 @@ from paply_gateway.settings import Settings
 
 LOGGER = logging.getLogger("paply.admin")
 WEB_ROOT = Path("web").resolve()
+ADMIN_APP_ROOT = WEB_ROOT / "static" / "admin-app"
 LOGIN_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 LOGIN_WINDOW_SECONDS = 300
 LOGIN_MAX_ATTEMPTS = 5
@@ -36,6 +38,34 @@ BUDGET_DURATION_PATTERN = re.compile(r"^[1-9][0-9]*(?:s|m|h|d|mo)$")
 
 class AdminInputError(ValueError):
     """An operator input failed local validation before reaching LiteLLM."""
+
+
+class AdminLoginPayload(BaseModel):
+    username: str
+    password: str
+
+
+class UserBudgetPayload(BaseModel):
+    max_budget: str
+    budget_duration: str
+    rpm_limit: str = ""
+    tpm_limit: str = ""
+    max_parallel_requests: str = ""
+    blocked: bool = False
+
+
+class DeploymentPayload(BaseModel):
+    model_name: str
+    upstream_model: str
+    api_base: str
+    api_key: str = ""
+    weight: str = ""
+    rpm: str = ""
+    tpm: str = ""
+
+
+class DeploymentStatePayload(BaseModel):
+    blocked: bool
 
 
 def _client_address(request: Request) -> str:
@@ -587,71 +617,404 @@ def create_admin_app(
         _set_flash(request, message, "error")
         return RedirectResponse(target, status_code=303)
 
-    @application.get("/health/live")
-    async def liveness() -> dict[str, bool]:
-        return {"ok": True}
-
-    @application.get("/", response_class=HTMLResponse)
-    async def home(request: Request) -> Any:
+    def require_api_auth(request: Request) -> None:
         if not _is_authenticated(request):
-            return RedirectResponse("/login", status_code=303)
-        return RedirectResponse("/overview", status_code=303)
+            raise HTTPException(status_code=401, detail="管理员会话已失效，请重新登录。")
 
-    @application.get("/overview", response_class=HTMLResponse)
-    async def overview_page(request: Request) -> Any:
-        return await render_data_page(
+    def verify_api_csrf(request: Request) -> None:
+        submitted = request.headers.get("x-csrf-token", "")
+        try:
+            _verify_csrf(request, submitted)
+        except AdminInputError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+
+    def api_mutation_error(event: str, error: Exception) -> None:
+        if isinstance(error, AdminInputError):
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        LOGGER.error(event, extra={"error_type": type(error).__name__})
+        raise HTTPException(
+            status_code=502,
+            detail="LiteLLM 未接受本次操作，请检查节点状态后重试。",
+        ) from error
+
+    async def api_data(
+        request: Request,
+        loader: Any,
+        *,
+        event: str,
+        failure_message: str,
+    ) -> dict[str, Any]:
+        require_api_auth(request)
+        try:
+            data = await loader(request.app.state.http_client, runtime_settings)
+        except (httpx.RequestError, httpx.HTTPStatusError) as error:
+            LOGGER.error(event, extra={"error_type": type(error).__name__})
+            raise HTTPException(status_code=503, detail=failure_message) from error
+        return {"data": data}
+
+    @application.get("/api/admin/session")
+    async def admin_session(request: Request) -> dict[str, Any]:
+        if not _is_authenticated(request):
+            return {"data": {"authenticated": False}}
+        return {
+            "data": {
+                "authenticated": True,
+                "username": runtime_settings.paply_admin_username,
+                "csrf_token": _csrf_token(request),
+                "version": __version__,
+                "allowed_models": sorted(allowed_models),
+                "litellm_ui_url": runtime_settings.paply_litellm_ui_public_url,
+            }
+        }
+
+    @application.post("/api/admin/session")
+    async def create_admin_session(
+        request: Request,
+        payload: AdminLoginPayload,
+    ) -> dict[str, Any]:
+        address = _client_address(request)
+        if not _allow_login_attempt(address):
+            raise HTTPException(status_code=429, detail="登录尝试过多，请五分钟后再试。")
+        username_valid = hmac.compare_digest(
+            payload.username.strip(), runtime_settings.paply_admin_username
+        )
+        password_valid = hmac.compare_digest(payload.password, admin_password)
+        if not username_valid or not password_valid:
+            raise HTTPException(status_code=401, detail="账号或密码不正确，请重新输入。")
+        _clear_login_attempts(address)
+        request.session.clear()
+        request.session["admin_authenticated"] = True
+        return {
+            "data": {
+                "authenticated": True,
+                "username": runtime_settings.paply_admin_username,
+                "csrf_token": _csrf_token(request),
+                "version": __version__,
+                "allowed_models": sorted(allowed_models),
+                "litellm_ui_url": runtime_settings.paply_litellm_ui_public_url,
+            }
+        }
+
+    @application.delete("/api/admin/session")
+    async def delete_admin_session(request: Request) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        request.session.clear()
+        return {"data": {"authenticated": False}}
+
+    @application.get("/api/admin/overview")
+    async def admin_overview(request: Request) -> dict[str, Any]:
+        return await api_data(
             request,
-            template_name="overview.html",
-            active_page="overview",
-            loader=_dashboard_data,
+            _dashboard_data,
+            event="admin_api_overview_failed",
             failure_message="暂时无法读取网关概览，请检查 LiteLLM 后重试。",
         )
 
-    @application.get("/users", response_class=HTMLResponse)
-    async def users_page(request: Request) -> Any:
-        return await render_data_page(
+    @application.get("/api/admin/users")
+    async def admin_users(request: Request) -> dict[str, Any]:
+        return await api_data(
             request,
-            template_name="users.html",
-            active_page="users",
-            loader=_users_data,
+            _users_data,
+            event="admin_api_users_failed",
             failure_message="暂时无法读取用户预算，请检查 LiteLLM 后重试。",
         )
 
-    @application.get("/models", response_class=HTMLResponse)
-    async def models_page(request: Request) -> Any:
+    @application.get("/api/admin/models")
+    async def admin_models(request: Request) -> dict[str, Any]:
         async def load_models(
             client: httpx.AsyncClient,
             settings: Settings,
         ) -> dict[str, Any]:
-            return await _models_data(
-                client,
-                settings,
-                request.app.state.deployment_health,
-            )
+            return await _models_data(client, settings, request.app.state.deployment_health)
 
-        return await render_data_page(
+        return await api_data(
             request,
-            template_name="models.html",
-            active_page="models",
-            loader=load_models,
+            load_models,
+            event="admin_api_models_failed",
             failure_message="暂时无法读取模型节点，请检查 LiteLLM 后重试。",
         )
 
-    @application.get("/system", response_class=HTMLResponse)
-    async def system_page(request: Request) -> Any:
-        return await render_data_page(
+    @application.get("/api/admin/system")
+    async def admin_system(request: Request) -> dict[str, Any]:
+        return await api_data(
             request,
-            template_name="system.html",
-            active_page="system",
-            loader=_system_data,
+            _system_data,
+            event="admin_api_system_failed",
             failure_message="暂时无法读取系统状态。",
         )
 
+    @application.patch("/api/admin/users/{user_id}")
+    async def api_update_user_budget(
+        request: Request,
+        user_id: str,
+        payload: UserBudgetPayload,
+    ) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        try:
+            normalized_user_id = _validated_model_value(user_id, "用户标识")
+            parsed_budget = _positive_number(payload.max_budget, "预算")
+            duration = payload.budget_duration.strip()
+            if not BUDGET_DURATION_PATTERN.fullmatch(duration):
+                raise AdminInputError("预算周期格式应类似 30d 或 1mo。")
+            await _litellm_json(
+                request.app.state.http_client,
+                runtime_settings,
+                "/user/update",
+                method="POST",
+                json_body={
+                    "user_id": normalized_user_id,
+                    "max_budget": parsed_budget,
+                    "budget_duration": duration,
+                    "rpm_limit": _optional_limit(payload.rpm_limit, "RPM"),
+                    "tpm_limit": _optional_limit(payload.tpm_limit, "TPM"),
+                    "max_parallel_requests": _optional_limit(
+                        payload.max_parallel_requests,
+                        "最大并发数",
+                    ),
+                    "blocked": payload.blocked,
+                },
+            )
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            api_mutation_error("admin_api_user_budget_update_failed", error)
+        LOGGER.info("admin_user_budget_updated")
+        return {"data": {"message": "用户预算与限额已更新。"}}
+
+    @application.post("/api/admin/deployments")
+    async def api_create_deployment(
+        request: Request,
+        payload: DeploymentPayload,
+    ) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        try:
+            public_model = _validated_public_model(payload.model_name, allowed_models)
+            if not payload.api_key.strip():
+                raise AdminInputError("新节点必须填写 API Key。")
+            deployment_id = str(uuid4())
+            await _litellm_json(
+                request.app.state.http_client,
+                runtime_settings,
+                "/model/new",
+                method="POST",
+                json_body={
+                    "model_name": public_model,
+                    "litellm_params": _deployment_params(
+                        upstream_model=payload.upstream_model,
+                        api_base=payload.api_base,
+                        api_key=payload.api_key,
+                        weight=payload.weight,
+                        rpm=payload.rpm,
+                        tpm=payload.tpm,
+                    ),
+                    "model_info": {
+                        "id": deployment_id,
+                        "mode": _deployment_mode(public_model),
+                    },
+                },
+            )
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            api_mutation_error("admin_api_model_deployment_create_failed", error)
+        LOGGER.info("admin_model_deployment_created")
+        return {"data": {"id": deployment_id, "message": "模型节点已加入负载均衡池。"}}
+
+    @application.patch("/api/admin/deployments/{deployment_id}")
+    async def api_update_deployment(
+        request: Request,
+        deployment_id: str,
+        payload: DeploymentPayload,
+    ) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        try:
+            normalized_id = _validated_deployment_id(deployment_id)
+            public_model = _validated_public_model(payload.model_name, allowed_models)
+            params = _deployment_params(
+                upstream_model=payload.upstream_model,
+                api_base=payload.api_base,
+                api_key=payload.api_key,
+                weight=payload.weight,
+                rpm=payload.rpm,
+                tpm=payload.tpm,
+            )
+            if not payload.weight.strip():
+                params["weight"] = None
+            if not payload.rpm.strip():
+                params["rpm"] = None
+            if not payload.tpm.strip():
+                params["tpm"] = None
+            await _litellm_json(
+                request.app.state.http_client,
+                runtime_settings,
+                "/model/update",
+                method="POST",
+                json_body={
+                    "model_name": public_model,
+                    "litellm_params": params,
+                    "model_info": {
+                        "id": normalized_id,
+                        "mode": _deployment_mode(public_model),
+                    },
+                },
+            )
+            request.app.state.deployment_health.pop(normalized_id, None)
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            api_mutation_error("admin_api_model_deployment_update_failed", error)
+        LOGGER.info("admin_model_deployment_updated")
+        return {"data": {"message": "模型节点配置已更新。"}}
+
+    @application.patch("/api/admin/deployments/{deployment_id}/state")
+    async def api_toggle_deployment(
+        request: Request,
+        deployment_id: str,
+        payload: DeploymentStatePayload,
+    ) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        try:
+            normalized_id = _validated_deployment_id(deployment_id)
+            await _litellm_json(
+                request.app.state.http_client,
+                runtime_settings,
+                "/model/update",
+                method="POST",
+                json_body={"model_info": {"id": normalized_id}, "blocked": payload.blocked},
+            )
+            request.app.state.deployment_health.pop(normalized_id, None)
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            api_mutation_error("admin_api_model_deployment_toggle_failed", error)
+        LOGGER.info("admin_model_deployment_state_updated")
+        return {"data": {"message": "模型节点状态已更新。"}}
+
+    @application.post("/api/admin/deployments/{deployment_id}/test")
+    async def api_test_deployment(request: Request, deployment_id: str) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        normalized_id: str | None = None
+        try:
+            normalized_id = _validated_deployment_id(deployment_id)
+            health = await _check_deployment_health(
+                request.app.state.http_client,
+                runtime_settings,
+                normalized_id,
+            )
+            request.app.state.deployment_health[normalized_id] = health
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            if normalized_id and not isinstance(error, AdminInputError):
+                request.app.state.deployment_health[normalized_id] = {
+                    "state": "unknown",
+                    "label": "健康检查不可达",
+                    "checked_at": _health_timestamp(),
+                }
+            api_mutation_error("admin_api_model_deployment_test_failed", error)
+        LOGGER.info("admin_model_deployment_tested")
+        return {"data": {"health": health}}
+
+    @application.post("/api/admin/deployments/health")
+    async def api_refresh_deployment_health(request: Request) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        try:
+            model_document = await _litellm_json(
+                request.app.state.http_client,
+                runtime_settings,
+                "/model/info",
+            )
+            groups = _model_groups(model_document)
+            deployment_ids = [
+                node["id"]
+                for group in groups
+                for node in group["deployments"]
+                if not node["blocked"]
+            ]
+            results = await asyncio.gather(
+                *(
+                    _check_deployment_health(
+                        request.app.state.http_client,
+                        runtime_settings,
+                        deployment_id,
+                    )
+                    for deployment_id in deployment_ids
+                ),
+                return_exceptions=True,
+            )
+            counts = {"healthy": 0, "unhealthy": 0, "unknown": 0}
+            for deployment_id, result in zip(deployment_ids, results, strict=True):
+                if isinstance(result, BaseException):
+                    health = {
+                        "state": "unknown",
+                        "label": "健康检查不可达",
+                        "checked_at": _health_timestamp(),
+                    }
+                    LOGGER.error(
+                        "admin_model_deployment_health_failed",
+                        extra={"error_type": type(result).__name__},
+                    )
+                else:
+                    health = result
+                request.app.state.deployment_health[deployment_id] = health
+                counts[health["state"]] += 1
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            api_mutation_error("admin_api_model_deployment_health_refresh_failed", error)
+        LOGGER.info("admin_model_deployment_health_refreshed")
+        return {"data": {"counts": counts}}
+
+    @application.delete("/api/admin/deployments/{deployment_id}")
+    async def api_delete_deployment(request: Request, deployment_id: str) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        try:
+            normalized_id = _validated_deployment_id(deployment_id)
+            await _litellm_json(
+                request.app.state.http_client,
+                runtime_settings,
+                "/model/delete",
+                method="POST",
+                json_body={"id": normalized_id},
+            )
+            request.app.state.deployment_health.pop(normalized_id, None)
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            api_mutation_error("admin_api_model_deployment_delete_failed", error)
+        LOGGER.info("admin_model_deployment_deleted")
+        return {"data": {"message": "模型节点已删除。"}}
+
+    @application.get("/health/live")
+    async def liveness() -> dict[str, bool]:
+        return {"ok": True}
+
+    def admin_spa() -> FileResponse:
+        index = ADMIN_APP_ROOT / "index.html"
+        if not index.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail="Paply Gateway 管理前端尚未构建。",
+            )
+        return FileResponse(index, headers={"Cache-Control": "no-store"})
+
+    @application.get("/", response_class=HTMLResponse)
+    async def home() -> FileResponse:
+        return admin_spa()
+
+    @application.get("/overview", response_class=HTMLResponse)
+    async def overview_page() -> FileResponse:
+        return admin_spa()
+
+    @application.get("/users", response_class=HTMLResponse)
+    async def users_page() -> FileResponse:
+        return admin_spa()
+
+    @application.get("/models", response_class=HTMLResponse)
+    async def models_page() -> FileResponse:
+        return admin_spa()
+
+    @application.get("/system", response_class=HTMLResponse)
+    async def system_page() -> FileResponse:
+        return admin_spa()
+
     @application.get("/login", response_class=HTMLResponse)
-    async def login_page(request: Request) -> Any:
-        if _is_authenticated(request):
-            return RedirectResponse("/overview", status_code=303)
-        return templates.TemplateResponse(request, "login.html", {"error": None})
+    async def login_page() -> FileResponse:
+        return admin_spa()
 
     @application.post("/login", response_class=HTMLResponse)
     async def login(
