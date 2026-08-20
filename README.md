@@ -1,4 +1,4 @@
-# Paply Token Gateway
+# Paply Gateway
 
 Paply 论文 Agent 的模型网关工程。它以 [LiteLLM Proxy](https://github.com/BerriAI/litellm) 为数据面，负责真实 token 计量、用户/团队预算、限流和 Spend Logs；Paply 自有边缘服务负责登录会话认证、desktop 模型配置协议和 OpenAI 兼容流式入口。
 
@@ -36,7 +36,7 @@ Paply Desktop
 
 要求 Docker Compose v2、Python 3.12（仅本地脚本/测试需要）。
 
-本地默认假设 `paply-litellm` 与 `paplyai-skills-catalog` 两个仓库同级放置；若目录不同，通过 `PAPLY_SKILLS_CATALOG_HOST_PATH` 指向技能目录仓库。
+本地默认假设 `paply-gateway` 与 `paplyai-skills-catalog` 两个仓库同级放置；若目录不同，通过 `PAPLY_SKILLS_CATALOG_HOST_PATH` 指向技能目录仓库。
 
 ```bash
 cp .env.example .env
@@ -45,7 +45,9 @@ docker compose up -d --build
 curl http://127.0.0.1:4387/health/ready
 ```
 
-Paply 中文管理台默认仅绑定本机：<http://127.0.0.1:4390>。登录账号由 `.env` 的 `PAPLY_ADMIN_USERNAME` / `PAPLY_ADMIN_PASSWORD` 配置。LiteLLM 原生高级运维后台默认位于 <http://127.0.0.1:4000/ui>，由单独的 `LITELLM_UI_USERNAME` / `LITELLM_UI_PASSWORD` 登录。临时通过 IP 和端口开放运维 UI 时，将 `PAPLY_LITELLM_UI_BIND_ADDRESS=0.0.0.0` 和 `PAPLY_LITELLM_UI_PUBLIC_URL=http://<server-ip>:4000` 一并设置；Paply 管理台的模型配置区域会显示跳转入口。对外客户端入口是 <http://127.0.0.1:4387>。
+Paply 中文管理台默认仅绑定本机：<http://127.0.0.1:4390>。登录账号由 `.env` 的 `PAPLY_ADMIN_USERNAME` / `PAPLY_ADMIN_PASSWORD` 配置。管理台包含独立的用量概览、用户与预算、模型配置和系统状态页面；模型页面可以新增、编辑、启停、测试和删除 LiteLLM deployment，同一公开模型名下的多个节点组成负载均衡池。API Key 只在创建或轮换时提交，不会回显到页面。
+
+LiteLLM 原生高级运维后台默认位于 <http://127.0.0.1:4000/ui>，由单独的 `LITELLM_UI_USERNAME` / `LITELLM_UI_PASSWORD` 登录，仅作为高级诊断入口。临时通过 IP 和端口开放该入口时，将 `PAPLY_LITELLM_UI_BIND_ADDRESS=0.0.0.0` 和 `PAPLY_LITELLM_UI_PUBLIC_URL=http://<server-ip>:4000` 一并设置；Paply 管理台的系统状态页会显示跳转入口。对外客户端入口是 <http://127.0.0.1:4387>。
 
 ## 内部账号注册与登录
 
@@ -85,7 +87,8 @@ docker compose config --quiet
 
 - `config/litellm.yaml`：LiteLLM 的认证、数据库、Redis 和 Router 基础配置；上游 deployment 不写入该文件。
 - `config/paply-models.yaml`：下发给 desktop 的模型能力元数据，不含任何密钥。
-- LiteLLM 原生控制台：在 PostgreSQL 中维护上游模型、Base URL、API Key、权重、顺序与 RPM/TPM；同一 `paply-*` 公开别名下的多个 deployment 由 LiteLLM Router 负载均衡。
+- Paply Gateway 管理台：日常维护上游模型、Base URL、API Key、权重、启停与 RPM/TPM；所有变更通过 LiteLLM 管理 API 写入 PostgreSQL，同一 `paply-*` 公开别名下的多个 deployment 由 LiteLLM Router 负载均衡。
+- LiteLLM 原生控制台：仅用于 Paply 管理台尚未覆盖的高级诊断和底层能力。
 - `PAPLY_SKILLS_CATALOG_HOST_PATH`：只读挂载 PaplyAI 官方技能目录，由 Gateway 输出远程可下载的目录协议。
 - `.env`：数据库、Redis、服务认证和管理密钥；永不提交 provider key。
 - `compose.yaml`：本地单节点拓扑。生产应使用托管 PostgreSQL/Redis、TLS ingress 和独立备份策略。

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block body_class %}admin-page{% endblock %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="sidebar-brand" href="/overview" aria-label="Paply Gateway 首页">
+      <span class="brand-mark"><img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="PaplyAI" /></span>
+      <span><strong>PaplyAI</strong><small>Gateway 管理中心</small></span>
+    </a>
+
+    <nav aria-label="主要导航">
+      <a class="nav-item {% if active_page == 'overview' %}active{% endif %}" href="/overview"><span class="nav-icon">⌁</span><span>运行概览</span></a>
+      <a class="nav-item {% if active_page == 'users' %}active{% endif %}" href="/users"><span class="nav-icon">♙</span><span>用户与预算</span></a>
+      <a class="nav-item {% if active_page == 'models' %}active{% endif %}" href="/models"><span class="nav-icon">◇</span><span>模型与节点</span></a>
+      <a class="nav-item {% if active_page == 'system' %}active{% endif %}" href="/system"><span class="nav-icon">◌</span><span>系统状态</span></a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="account-block"><span class="avatar">{{ username[0] | upper }}</span><span><strong>{{ username }}</strong><small>Gateway 管理员</small></span></div>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="text-button" type="submit">退出登录</button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="content">
+    {% if flash %}<div class="alert alert-{{ flash.level }} page-alert" role="status">{{ flash.message }}</div>{% endif %}
+    {% if error %}<div class="alert alert-error page-alert" role="alert">{{ error }}</div>{% endif %}
+    {% block page %}{% endblock %}
+    <footer>Paply Gateway v{{ version }} · 身份、模型访问与用量治理</footer>
+  </main>
+</div>
+{% endblock %}

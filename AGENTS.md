@@ -1,4 +1,4 @@
-# Paply Token Gateway engineering contract
+# Paply Gateway engineering contract
 
 ## Non-negotiable rules
 
@@ -15,10 +15,10 @@
 
 - `gateway` is the Paply-owned FastAPI edge. It owns the internal-pilot account registration/login/refresh/logout API, persists password hashes and hashed refresh sessions in its SQLite volume, serves `/api/models`, the PaplyAI `/api/skills` catalog and artifacts, liveness/readiness endpoints, and streams `/v1/*` to LiteLLM.
 - The skills catalog is a desktop compatibility surface, not part of token accounting. Local artifact paths are resolved below the mounted catalog root, symlinks are rejected, and generated downloads must remain under the desktop's 50 MB artifact limit.
-- `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key.
+- `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key. Overview, users, models, and system status are separate routes. It is the daily control surface for LiteLLM deployments and user budgets; provider secrets are write-only and must never be rendered or stored in the browser session.
 - The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.
 - `litellm` is pinned to the official signed release image and owns provider routing, virtual keys, budgets, rate limits, token counts, and spend logs.
-- Upstream deployments are owned by LiteLLM's PostgreSQL-backed control plane and are managed through the native LiteLLM UI/API. `config/litellm.yaml` must not contain production provider deployments or credentials. Multiple deployments sharing a `paply-*` model name form that alias's load-balancing pool.
+- Upstream deployments are owned by LiteLLM's PostgreSQL-backed control plane and are managed through the Paply admin's validated LiteLLM API calls. The native LiteLLM UI remains an advanced diagnostic escape hatch. `config/litellm.yaml` must not contain production provider deployments or credentials. Multiple deployments sharing a `paply-*` model name form that alias's load-balancing pool.
 - PostgreSQL is the durable source of truth for LiteLLM users, keys, budgets, and spend.
 - Redis is for LiteLLM coordination and rate limiting. It is never the durable usage source of truth.
 - The LiteLLM admin port binds to loopback in local Compose. Production ingress must expose only the Paply edge unless an authenticated operator network is explicitly configured.

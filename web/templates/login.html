@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}登录 · PaplyAI 用量管理台{% endblock %}
+{% block title %}登录 · Paply Gateway{% endblock %}
 {% block body_class %}login-page{% endblock %}
 {% block body %}
 <main class="login-shell">
-  <section class="login-brand" aria-label="PaplyAI 模型用量网关">
+  <section class="login-brand" aria-label="Paply Gateway">
     <div class="brand-mark brand-mark-large">
       <img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="PaplyAI" />
     </div>
     <div>
-      <p class="eyebrow">PAPLYAI 模型用量管理</p>
+      <p class="eyebrow">PAPLY GATEWAY</p>
       <h1>让每一次模型调用<br />都清晰、可控。</h1>
-      <p class="login-intro">统一管理用户用量、预算和模型状态，为论文 Agent 提供稳定的模型基础设施。</p>
+      <p class="login-intro">统一管理身份、预算、模型节点与运行状态，为 PaplyAI 提供稳定的远程能力入口。</p>
     </div>
     <div class="feature-list" aria-label="产品能力">
       <div><span class="feature-dot"></span><span>逐用户 Token 与费用统计</span></div>
@@ -26,7 +26,7 @@
     </div>
     <p class="eyebrow">管理控制台</p>
     <h2 id="login-heading">欢迎回来</h2>
-    <p class="muted">请使用管理员账号登录用量管理台。</p>
+    <p class="muted">请使用管理员账号登录 Paply Gateway 管理中心。</p>
 
     {% if error %}
       <div class="alert alert-error" role="alert">{{ error }}</div>

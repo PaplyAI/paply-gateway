@@ -130,7 +130,7 @@ def create_app(
             _json_log("gateway_stopped")
 
     application = FastAPI(
-        title="Paply Token Gateway",
+        title="Paply Gateway",
         version=__version__,
         lifespan=lifespan,
         docs_url=None,
@@ -161,7 +161,7 @@ def create_app(
 
     @application.get("/")
     async def root() -> dict[str, str]:
-        return {"name": "paply-token-gateway", "version": __version__}
+        return {"name": "paply-gateway", "version": __version__}
 
     @application.get("/health/live")
     async def liveness() -> dict[str, bool]:

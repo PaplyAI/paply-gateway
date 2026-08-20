@@ -1,0 +1,50 @@
+{% extends "admin_layout.html" %}
+{% block title %}用户与预算 · Paply Gateway{% endblock %}
+{% block page %}
+<header class="topbar">
+  <div><p class="eyebrow">访问与消费治理</p><h1>用户与预算</h1><p>按 Paply 身份管理周期预算、速率、并发和访问状态。</p></div>
+  <div class="topbar-actions"><a class="secondary-button" href="/users">刷新数据</a></div>
+</header>
+{% if data %}
+<section class="metric-grid compact-metrics">
+  <article class="metric-card"><div class="metric-heading"><span>计量用户</span><span class="metric-icon">♙</span></div><strong>{{ data.user_count }}</strong></article>
+  <article class="metric-card"><div class="metric-heading"><span>累计消费</span><span class="metric-icon">¥</span></div><strong>{{ data.total_spend }}</strong></article>
+  <article class="metric-card"><div class="metric-heading"><span>总预算</span><span class="metric-icon">◫</span></div><strong>{{ data.total_budget }}</strong></article>
+</section>
+
+<section class="panel table-panel">
+  <div class="panel-header"><div><p class="eyebrow">LiteLLM USERS</p><h2>预算与限额</h2><p>修改会直接写入 LiteLLM，客户端下一次请求立即生效。</p></div><span class="count-chip">{{ data.user_count }} 个用户</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>用户</th><th>模型权限</th><th>消费 / 预算</th><th>周期</th><th>限制</th><th>状态</th><th></th></tr></thead>
+    <tbody>{% for user in data.users %}
+      <tr>
+        <td><strong>{{ user.alias }}</strong><code class="block-code">{{ user.user_id }}</code></td>
+        <td><div class="tag-list">{% for model in user.models %}<span>{{ model }}</span>{% endfor %}</div></td>
+        <td><div class="budget-cell"><div><strong>{{ user.spend }}</strong><span>/ {{ user.budget }}</span></div><div class="progress"><i style="width: {{ user.budget_percent }}%"></i></div></div></td>
+        <td>{{ user.duration }}</td>
+        <td><span class="limit-copy">RPM {{ user.rpm_limit or '—' }}<br />TPM {{ user.tpm_limit or '—' }}<br />并发 {{ user.max_parallel_requests or '—' }}</span></td>
+        <td><span class="state-chip {% if user.blocked %}blocked{% endif %}">{{ '已停用' if user.blocked else '正常' }}</span></td>
+        <td>
+          <button class="small-button" type="button" data-dialog-open="user-{{ loop.index }}">编辑</button>
+          <dialog id="user-{{ loop.index }}" class="form-dialog">
+        <form method="post" action="/users/{{ user.user_id }}/budget">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <div class="dialog-header"><div><p class="eyebrow">用户限额</p><h2>{{ user.alias }}</h2></div><button type="button" class="icon-button" data-dialog-close aria-label="关闭">×</button></div>
+          <div class="form-grid">
+            <label><span>周期预算（美元）</span><input name="max_budget" type="number" min="0.0001" step="0.0001" value="{{ user.budget_value }}" required /></label>
+            <label><span>预算周期</span><input name="budget_duration" value="{{ user.duration }}" placeholder="30d" required /></label>
+            <label><span>RPM</span><input name="rpm_limit" type="number" min="1" value="{{ user.rpm_limit }}" placeholder="不限制" /></label>
+            <label><span>TPM</span><input name="tpm_limit" type="number" min="1" value="{{ user.tpm_limit }}" placeholder="不限制" /></label>
+            <label><span>最大并发</span><input name="max_parallel_requests" type="number" min="1" value="{{ user.max_parallel_requests }}" placeholder="不限制" /></label>
+            <label class="switch-field"><input name="blocked" type="checkbox" value="true" {% if user.blocked %}checked{% endif %} /><span>暂停该用户访问</span></label>
+          </div>
+          <div class="dialog-actions"><button type="button" class="secondary-button" data-dialog-close>取消</button><button class="primary-button inline-primary" type="submit">保存设置</button></div>
+        </form>
+          </dialog>
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="7" class="empty-state">暂时没有计量用户</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

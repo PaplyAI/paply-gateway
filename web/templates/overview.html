@@ -1,0 +1,39 @@
+{% extends "admin_layout.html" %}
+{% block title %}运行概览 · Paply Gateway{% endblock %}
+{% block page %}
+<header class="topbar">
+  <div><p class="eyebrow">PAPLY GATEWAY</p><h1>运行概览</h1><p>查看最近 30 天模型调用、用户预算与节点规模。</p></div>
+  <div class="topbar-actions"><span class="status-pill"><i></i>数据面已连接</span><a class="secondary-button" href="/overview">刷新数据</a></div>
+</header>
+
+{% if data %}
+<section class="metric-grid" aria-label="核心指标">
+  <article class="metric-card primary-metric"><div class="metric-heading"><span>近 30 天总 Token</span><span class="metric-icon">T</span></div><strong>{{ data.total_tokens }}</strong><p>输入 {{ data.prompt_tokens }} · 输出 {{ data.completion_tokens }}</p></article>
+  <article class="metric-card"><div class="metric-heading"><span>近 30 天请求</span><span class="metric-icon">↗</span></div><strong>{{ data.request_count }}</strong><p>成功 {{ data.successful_request_count }} · 失败 {{ data.failed_request_count }}</p></article>
+  <article class="metric-card"><div class="metric-heading"><span>累计模型费用</span><span class="metric-icon">¥</span></div><strong>{{ data.total_spend }}</strong><p>LiteLLM 权威消费记录</p></article>
+  <article class="metric-card"><div class="metric-heading"><span>已分配预算</span><span class="metric-icon">◫</span></div><strong>{{ data.total_budget }}</strong><p>有效计量用户预算总额</p></article>
+  <article class="metric-card"><div class="metric-heading"><span>模型组 / 节点</span><span class="metric-icon">◇</span></div><strong>{{ data.model_group_count }} / {{ data.deployment_count }}</strong><p>稳定别名与实际 provider deployment</p></article>
+  <article class="metric-card"><div class="metric-heading"><span>计量用户</span><span class="metric-icon">♙</span></div><strong>{{ data.user_count }}</strong><p>使用 Paply 身份，不持有上游密钥</p></article>
+</section>
+<p class="metric-period">统计周期：{{ data.activity_period }} · 最近刷新 {{ data.updated_at }}</p>
+
+<div class="overview-columns">
+  <section class="panel">
+    <div class="panel-header"><div><p class="eyebrow">模型数据面</p><h2>模型组状态</h2><p>同名节点共同组成负载均衡池。</p></div><a class="text-link" href="/models">管理节点 →</a></div>
+    <div class="summary-list">
+      {% for group in data.model_groups %}
+      <div class="summary-row"><span class="model-symbol">✦</span><span class="summary-main"><strong>{{ group.name }}</strong><small>{{ group.active_count }} 个启用节点</small></span><span class="count-chip">{{ group.deployment_count }} 节点</span></div>
+      {% else %}<p class="empty-state">尚未配置模型组</p>{% endfor %}
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-header"><div><p class="eyebrow">消费治理</p><h2>预算使用靠前</h2><p>按累计消费排序的计量用户。</p></div><a class="text-link" href="/users">管理预算 →</a></div>
+    <div class="summary-list">
+      {% for user in data.users %}
+      <div class="summary-row"><span class="avatar small-avatar">{{ user.alias[0] }}</span><span class="summary-main"><strong>{{ user.alias }}</strong><small>{{ user.spend }} / {{ user.budget }}</small></span><span class="count-chip">{{ user.duration }}</span></div>
+      {% else %}<p class="empty-state">尚无计量用户</p>{% endfor %}
+    </div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

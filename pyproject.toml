@@ -3,9 +3,9 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "paply-token-gateway"
-version = "0.2.0"
-description = "Paply desktop model configuration and streaming edge for LiteLLM"
+name = "paply-gateway"
+version = "0.3.0"
+description = "PaplyAI identity, model access, routing control, and usage governance gateway"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi==0.136.3",

@@ -1,0 +1,20 @@
+{% extends "admin_layout.html" %}
+{% block title %}系统状态 · Paply Gateway{% endblock %}
+{% block page %}
+<header class="topbar">
+  <div><p class="eyebrow">运行与诊断</p><h1>系统状态</h1><p>检查产品网关、模型数据面和持久化依赖。</p></div>
+  <div class="topbar-actions"><span class="status-pill {% if data and not data.healthy %}status-error{% endif %}"><i></i>{{ '全部正常' if data and data.healthy else '需要检查' }}</span><a class="secondary-button" href="/system">重新检查</a></div>
+</header>
+{% if data %}
+<section class="health-grid">
+{% for component in data.components %}
+  <article class="health-card {% if not component.healthy %}unhealthy{% endif %}"><div class="health-heading"><span class="health-dot"></span><span class="state-chip {% if not component.healthy %}blocked{% endif %}">{{ '正常' if component.healthy else '异常' }}</span></div><h2>{{ component.name }}</h2><p>{{ component.description }}</p><dl><div><dt>HTTP</dt><dd>{{ component.status }}</dd></div><div><dt>响应</dt><dd>{{ component.latency_ms }} ms</dd></div></dl></article>
+{% endfor %}
+</section>
+<section class="panel system-panel">
+  <div class="panel-header"><div><p class="eyebrow">部署信息</p><h2>Gateway 运行配置</h2><p>敏感地址和凭据不会显示在管理页面。</p></div></div>
+  <dl class="system-list"><div><dt>管理台版本</dt><dd>v{{ version }}</dd></div><div><dt>路由策略</dt><dd>simple-shuffle</dd></div><div><dt>计量数据源</dt><dd>LiteLLM + PostgreSQL</dd></div><div><dt>协调与限流</dt><dd>Redis</dd></div><div><dt>最近检查</dt><dd>{{ data.updated_at }}</dd></div><div><dt>公开接口</dt><dd>/api/* · /v1/*</dd></div></dl>
+  {% if litellm_ui_url %}<div class="advanced-callout"><div><strong>高级 LiteLLM 控制台</strong><p>仅用于 Paply 管理台尚未覆盖的底层诊断，不作为日常配置入口。</p></div><a class="secondary-button" href="{{ litellm_ui_url }}/ui" target="_blank" rel="noopener noreferrer">打开高级控制台 ↗</a></div>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

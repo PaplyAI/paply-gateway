@@ -44,7 +44,7 @@ def main() -> int:
         "auto_create_key": False,
         "budget_duration": args.budget_duration,
         "max_budget": args.max_budget,
-        "metadata": {"provisioned_by": "paply-token-gateway"},
+        "metadata": {"provisioned_by": "paply-gateway"},
         "models": args.models,
         "user_alias": args.alias or args.user_id,
         "user_id": args.user_id,

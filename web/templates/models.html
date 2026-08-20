@@ -1,0 +1,72 @@
+{% extends "admin_layout.html" %}
+{% block title %}模型与节点 · Paply Gateway{% endblock %}
+{% block page %}
+<header class="topbar">
+  <div><p class="eyebrow">模型数据面</p><h1>模型与节点</h1><p>管理稳定模型别名下的 provider 节点和负载参数。</p></div>
+  <div class="topbar-actions"><button class="primary-button inline-primary" type="button" data-dialog-open="create-deployment">新增节点</button></div>
+</header>
+{% if data %}
+<section class="metric-grid compact-metrics">
+  <article class="metric-card"><div class="metric-heading"><span>模型组</span><span class="metric-icon">◇</span></div><strong>{{ data.group_count }}</strong></article>
+  <article class="metric-card"><div class="metric-heading"><span>全部节点</span><span class="metric-icon">◎</span></div><strong>{{ data.deployment_count }}</strong></article>
+  <article class="metric-card"><div class="metric-heading"><span>启用节点</span><span class="metric-icon">✓</span></div><strong>{{ data.active_count }}</strong></article>
+</section>
+
+<div class="model-group-stack">
+{% for group in data.groups %}
+  <section class="panel model-group-panel">
+    <div class="panel-header"><div><p class="eyebrow">MODEL GROUP</p><h2>{{ group.name }}</h2><p>客户端始终请求该稳定别名，LiteLLM 使用 simple-shuffle 在健康节点间分流。</p></div><div class="group-counts"><span class="state-chip">{{ group.active_count }} 启用</span><span class="count-chip">{{ group.deployment_count }} 节点</span></div></div>
+    <div class="deployment-list">
+    {% for node in group.deployments %}
+      <article class="deployment-card {% if node.blocked %}is-blocked{% endif %}">
+        <div class="deployment-status"><span class="health-dot"></span></div>
+        <div class="deployment-main"><div class="deployment-title"><strong>{{ node.provider }}</strong><span class="state-chip {% if node.blocked %}blocked{% endif %}">{{ '已停用' if node.blocked else '参与路由' }}</span></div><span>{{ node.upstream }}</span><code>{{ node.api_base }}</code><small>ID {{ node.id }}</small></div>
+        <dl class="deployment-limits"><div><dt>权重</dt><dd>{{ node.weight or '默认' }}</dd></div><div><dt>RPM</dt><dd>{{ node.rpm or '—' }}</dd></div><div><dt>TPM</dt><dd>{{ node.tpm or '—' }}</dd></div></dl>
+        <div class="deployment-actions">
+          <form method="post" action="/models/deployments/{{ node.id }}/test"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button class="small-button" type="submit">测试</button></form>
+          <button class="small-button" type="button" data-dialog-open="node-{{ node.id }}">编辑</button>
+          <form method="post" action="/models/deployments/{{ node.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="blocked" value="{{ 'false' if node.blocked else 'true' }}" /><button class="small-button" type="submit">{{ '启用' if node.blocked else '停用' }}</button></form>
+        </div>
+      </article>
+      <dialog id="node-{{ node.id }}" class="form-dialog">
+        <form method="post" action="/models/deployments/{{ node.id }}/update">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <div class="dialog-header"><div><p class="eyebrow">编辑模型节点</p><h2>{{ node.provider }}</h2></div><button type="button" class="icon-button" data-dialog-close aria-label="关闭">×</button></div>
+          <div class="form-grid">
+            <label><span>公开模型组</span><select name="model_name" required>{% for name in allowed_models %}<option value="{{ name }}" {% if name == node.name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+            <label><span>上游模型</span><input name="upstream_model" value="{{ node.upstream }}" required /></label>
+            <label class="full-field"><span>API Base</span><input name="api_base" type="url" value="{{ node.api_base }}" required /></label>
+            <label class="full-field"><span>新 API Key</span><input name="api_key" type="password" autocomplete="new-password" placeholder="留空保持现有密钥" /></label>
+            <label><span>权重</span><input name="weight" type="number" min="0.0001" step="0.0001" value="{{ node.weight }}" placeholder="默认随机" /></label>
+            <label><span>RPM</span><input name="rpm" type="number" min="1" value="{{ node.rpm }}" placeholder="不限制" /></label>
+            <label><span>TPM</span><input name="tpm" type="number" min="1" value="{{ node.tpm }}" placeholder="不限制" /></label>
+          </div>
+          <div class="danger-zone"><span>删除后该节点立即退出路由池。</span><button class="danger-button" type="submit" formaction="/models/deployments/{{ node.id }}/delete" data-confirm="确定删除这个模型节点吗？">删除节点</button></div>
+          <div class="dialog-actions"><button type="button" class="secondary-button" data-dialog-close>取消</button><button class="primary-button inline-primary" type="submit">保存节点</button></div>
+        </form>
+      </dialog>
+    {% endfor %}
+    </div>
+  </section>
+{% else %}<section class="panel empty-state">尚未配置数据库模型节点</section>{% endfor %}
+</div>
+
+<dialog id="create-deployment" class="form-dialog">
+  <form method="post" action="/models/deployments">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="dialog-header"><div><p class="eyebrow">NEW DEPLOYMENT</p><h2>新增模型节点</h2><p>同一公开模型组下的多个节点会自动参与负载均衡。</p></div><button type="button" class="icon-button" data-dialog-close aria-label="关闭">×</button></div>
+    <div class="form-grid">
+      <label><span>公开模型组</span><select name="model_name" required>{% for name in allowed_models %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select></label>
+      <label><span>上游模型</span><input name="upstream_model" placeholder="openai/deepseek-v4-flash" required /></label>
+      <label class="full-field"><span>API Base</span><input name="api_base" type="url" placeholder="https://provider.example.com/v1" required /></label>
+      <label class="full-field"><span>API Key</span><input name="api_key" type="password" autocomplete="new-password" required /></label>
+      <label><span>权重</span><input name="weight" type="number" min="0.0001" step="0.0001" placeholder="默认随机" /></label>
+      <label><span>RPM</span><input name="rpm" type="number" min="1" placeholder="不限制" /></label>
+      <label><span>TPM</span><input name="tpm" type="number" min="1" placeholder="不限制" /></label>
+    </div>
+    <p class="form-note">密钥仅发送到 Paply Gateway 服务端，并由 LiteLLM 加密写入 PostgreSQL；页面不会再次回显。</p>
+    <div class="dialog-actions"><button type="button" class="secondary-button" data-dialog-close>取消</button><button class="primary-button inline-primary" type="submit">创建节点</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}
