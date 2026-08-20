@@ -40,7 +40,7 @@ Paply Desktop
 
 ```bash
 cp .env.example .env
-# 编辑 .env，替换所有 change-me；启动后在 LiteLLM 控制台添加 provider deployment
+# 编辑 .env，替换所有 change-me；启动后在 Paply Gateway 管理台添加模型节点
 docker compose up -d --build
 curl http://127.0.0.1:4387/health/ready
 ```
