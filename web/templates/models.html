@@ -18,19 +18,23 @@
 <div class="model-group-stack">
 {% for group in data.groups %}
   <section class="panel model-group-panel">
-    <div class="panel-header"><div><p class="eyebrow">MODEL GROUP</p><h2>{{ group.name }}</h2><p>客户端始终请求该稳定别名，LiteLLM 使用 simple-shuffle 在健康节点间分流。</p></div><div class="group-counts"><span class="state-chip">{{ group.active_count }} 启用</span><span class="count-chip">{{ group.deployment_count }} 节点</span></div></div>
-    <div class="deployment-list">
+    <div class="model-group-heading">
+      <div class="model-group-identity"><span class="model-group-mark">◇</span><div><p class="eyebrow">MODEL GROUP</p><h2>{{ group.name }}</h2></div></div>
+      <p class="model-group-routing">simple-shuffle · 在健康节点间分流</p>
+      <div class="group-counts"><span class="state-chip">{{ group.active_count }} 启用</span><span class="count-chip">{{ group.deployment_count }} 节点</span></div>
+    </div>
+    <div class="deployment-table">
+      <div class="deployment-table-head" aria-hidden="true"><span>节点</span><span>上游模型与地址</span><span>健康状态</span><span>负载参数</span><span>操作</span></div>
     {% for node in group.deployments %}
-      <article class="deployment-card health-{{ node.health.state }} {% if node.blocked %}is-blocked{% endif %}">
-        <div class="deployment-status"><span class="health-dot"></span></div>
-        <div class="deployment-main"><div class="deployment-title"><strong>{{ node.provider }}</strong><span class="state-chip {% if node.blocked or node.health.state == 'unhealthy' %}blocked{% elif node.health.state == 'unknown' %}unknown{% endif %}">{{ '已停用' if node.blocked else node.health.label }}</span></div><div class="deployment-route"><span>{{ node.upstream }}</span><code title="{{ node.api_base }}">{{ node.api_base }}</code></div><small title="{{ node.id }}">ID {{ node.id }}{% if node.health.checked_at %} · 检测于 {{ node.health.checked_at }}{% endif %}</small></div>
-        <div class="deployment-side">
-          <dl class="deployment-limits"><div><dt>权重</dt><dd>{{ node.weight or '默认' }}</dd></div><div><dt>RPM</dt><dd>{{ node.rpm or '—' }}</dd></div><div><dt>TPM</dt><dd>{{ node.tpm or '—' }}</dd></div></dl>
-          <div class="deployment-actions">
-            <form method="post" action="/models/deployments/{{ node.id }}/test"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button class="small-button" type="submit">测试</button></form>
-            <button class="small-button" type="button" data-dialog-open="node-{{ node.id }}">编辑</button>
-            <form method="post" action="/models/deployments/{{ node.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="blocked" value="{{ 'false' if node.blocked else 'true' }}" /><button class="small-button" type="submit">{{ '启用' if node.blocked else '停用' }}</button></form>
-          </div>
+      <article class="deployment-row health-{{ node.health.state }} {% if node.blocked %}is-blocked{% endif %}">
+        <div class="deployment-identity" data-label="节点"><span class="health-dot"></span><div><strong>{{ node.provider }}</strong><small title="{{ node.id }}">{{ node.id }}</small></div></div>
+        <div class="deployment-upstream" data-label="上游模型与地址"><span>{{ node.upstream }}</span><code title="{{ node.api_base }}">{{ node.api_base }}</code></div>
+        <div class="deployment-health" data-label="健康状态"><span class="state-chip {% if node.blocked or node.health.state == 'unhealthy' %}blocked{% elif node.health.state == 'unknown' %}unknown{% endif %}">{{ '已停用' if node.blocked else node.health.label }}</span>{% if node.health.checked_at %}<small>{{ node.health.checked_at }}</small>{% endif %}</div>
+        <dl class="deployment-limits" data-label="负载参数"><div><dt>权重</dt><dd>{{ node.weight or '默认' }}</dd></div><div><dt>RPM</dt><dd>{{ node.rpm or '—' }}</dd></div><div><dt>TPM</dt><dd>{{ node.tpm or '—' }}</dd></div></dl>
+        <div class="deployment-actions" data-label="操作">
+          <form method="post" action="/models/deployments/{{ node.id }}/test"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button class="small-button" type="submit">测试</button></form>
+          <button class="small-button" type="button" data-dialog-open="node-{{ node.id }}">编辑</button>
+          <form method="post" action="/models/deployments/{{ node.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="blocked" value="{{ 'false' if node.blocked else 'true' }}" /><button class="small-button" type="submit">{{ '启用' if node.blocked else '停用' }}</button></form>
         </div>
       </article>
       <dialog id="node-{{ node.id }}" class="form-dialog">
