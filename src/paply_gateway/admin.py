@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from paply_gateway import __version__
@@ -545,6 +546,18 @@ def create_admin_app(
         same_site="strict",
         https_only=runtime_settings.paply_environment == "production",
     )
+    application.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=5)
+
+    @application.middleware("http")
+    async def add_admin_asset_cache_headers(request: Request, call_next: Any) -> Any:
+        response = await call_next(request)
+        if response.status_code == 200:
+            if request.url.path.startswith("/static/admin-app/assets/"):
+                response.headers["cache-control"] = "public, max-age=31536000, immutable"
+            elif request.url.path == "/static/admin-app/paplyai-logo.png":
+                response.headers["cache-control"] = "public, max-age=86400"
+        return response
+
     application.mount("/static", StaticFiles(directory=WEB_ROOT / "static"), name="static")
     templates = Jinja2Templates(directory=WEB_ROOT / "templates")
 

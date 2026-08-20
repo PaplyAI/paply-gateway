@@ -1,22 +1,17 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
-import { AnimatePresence, motion } from 'motion/react';
+import { useState } from 'react';
 import Logo from '@/components/modules/logo';
 import { NAV_ITEMS, useAppStore } from '@/stores/app';
-import { preloadPage } from '@/lib/page-preload';
 import { cn } from '@/lib/utils';
 
 // AppShell 作为普通用户界面的稳定布局层，统一渲染导航、顶栏和页面内容。
 export function AppShell({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
     const currentPage = useAppStore((state) => state.currentPage);
-    const direction = useAppStore((state) => state.direction);
     const setCurrentPage = useAppStore((state) => state.setCurrentPage);
     const activeIndex = NAV_ITEMS.findIndex((route) => route.id === currentPage); // activeIndex 表示选中项在 Dock 中的位置。
     const currentLabel = NAV_ITEMS[activeIndex]?.label ?? 'Paply Gateway';
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null); // hoveredIndex 表示当前悬浮项的位置。
     const [isNavHovered, setIsNavHovered] = useState(false); // isNavHovered 表示悬浮背景是否显示。
-    const hoverIndicatorRef = useRef<HTMLSpanElement>(null); // hoverIndicatorRef 用于在淡入前确认悬浮背景的新位置。
 
     return (
         <div className="mx-auto flex h-dvh max-w-6xl animate-in flex-col overflow-hidden px-3 fade-in duration-300 md:grid md:grid-cols-[auto_1fr] md:grid-rows-[auto_minmax(0,1fr)] md:gap-x-6 md:px-6">
@@ -39,7 +34,6 @@ export function AppShell({ children, actions }: { children: ReactNode; actions?:
                         } as CSSProperties}
                     />
                     <span
-                        ref={hoverIndicatorRef}
                         aria-hidden="true"
                         className={cn(
                             'pointer-events-none absolute left-3 top-3 z-0 size-10 [transform:translateX(var(--nav-offset-x))] md:size-12 md:[transform:translateY(var(--nav-offset-y))]',
@@ -65,18 +59,9 @@ export function AppShell({ children, actions }: { children: ReactNode; actions?:
                                 aria-label={route.label}
                                 aria-current={isActive ? 'page' : undefined}
                                 onMouseEnter={() => {
-                                    // 首次进入先在不可见状态下定位，避免背景从上一次位置移动过来。
-                                    if (isNavHovered) {
-                                        setHoveredIndex(index);
-                                    } else {
-                                        flushSync(() => setHoveredIndex(index));
-                                        hoverIndicatorRef.current?.getBoundingClientRect();
-                                        setIsNavHovered(true);
-                                    }
-                                    preloadPage(route.id);
+                                    setHoveredIndex(index);
+                                    setIsNavHovered(true);
                                 }}
-                                onFocus={() => preloadPage(route.id)}
-                                onTouchStart={() => preloadPage(route.id)}
                                 onClick={() => setCurrentPage(route.id)}
                                 className={cn(
                                     'relative z-20 flex size-10 items-center justify-center rounded-2xl p-2 transition-[color,scale] duration-150 ease-linear hover:z-30 hover:scale-110 active:scale-95 md:size-12 md:p-3',
@@ -95,26 +80,7 @@ export function AppShell({ children, actions }: { children: ReactNode; actions?:
             <header className="my-6 flex flex-none items-center gap-x-2 px-2">
                 <Logo size={48} />
                 <div className="min-w-0 flex-1 overflow-hidden">
-                    <AnimatePresence mode="wait" custom={direction}>
-                        <motion.div
-                            key={currentPage}
-                            custom={direction}
-                            variants={{
-                                initial: (value: number) => ({ y: 32 * value, opacity: 0 }),
-                                animate: { y: 0, opacity: 1 },
-                                exit: (value: number) => ({ y: -32 * value, opacity: 0 }),
-                            }}
-                            initial="initial"
-                            animate="animate"
-                            exit="exit"
-                            transition={{ duration: 0.3 }}
-                            className="flex items-center"
-                        >
-                            <span className="mt-1 truncate text-3xl font-bold">
-                                {currentLabel}
-                            </span>
-                        </motion.div>
-                    </AnimatePresence>
+                    <span className="mt-1 block truncate text-3xl font-bold">{currentLabel}</span>
                 </div>
                 {actions && <div className="ml-auto">{actions}</div>}
             </header>

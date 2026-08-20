@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -138,6 +139,24 @@ def test_spa_shell_is_public_but_admin_api_requires_session(tmp_path: Path) -> N
 
     assert session.json() == {"data": {"authenticated": False}}
     assert protected.status_code == 401
+
+
+def test_admin_static_assets_are_compressed_and_cacheable(tmp_path: Path) -> None:
+    app = create_admin_app(
+        admin_settings(tmp_path),
+        transport=httpx.MockTransport(lambda request: httpx.Response(500)),
+    )
+    with TestClient(app) as client:
+        shell = client.get("/login")
+        asset_match = re.search(r'(/static/admin-app/assets/[^"\']+\.js)', shell.text)
+        assert asset_match is not None
+        asset = client.get(asset_match.group(1), headers={"accept-encoding": "gzip"})
+        logo = client.get("/static/admin-app/paplyai-logo.png")
+
+    assert asset.status_code == 200
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert asset.headers["content-encoding"] == "gzip"
+    assert logo.headers["cache-control"] == "public, max-age=86400"
 
 
 def test_invalid_admin_credentials_are_visible_without_secret_echo(tmp_path: Path) -> None:

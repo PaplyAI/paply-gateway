@@ -8,23 +8,22 @@ import {
 } from '@/api/admin';
 import { useAuthStore } from '@/api/user';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  MorphingDialog, MorphingDialogClose, MorphingDialogContainer, MorphingDialogContent,
-  MorphingDialogTrigger, useMorphingDialog,
-} from '@/components/ui/morphing-dialog';
 import { cn } from '@/lib/utils';
 import { EmptyState, PageError, PageLoading } from './page-state';
 
 const emptyDeployment: DeploymentInput = { model_name: '', upstream_model: '', api_base: '', api_key: '', weight: '', rpm: '', tpm: '' };
 
-function DeploymentForm({ deployment }: { deployment?: Deployment }) {
+function DeploymentForm({ deployment, onSaved }: { deployment?: Deployment; onSaved: () => void }) {
   const session = useAuthStore((state) => state.session);
   const create = useCreateDeployment();
   const updateMutation = useUpdateDeployment();
   const remove = useDeleteDeployment();
-  const { setIsOpen } = useMorphingDialog();
   const [form, setForm] = useState<DeploymentInput>(deployment ? {
     model_name: deployment.name, upstream_model: deployment.upstream, api_base: deployment.api_base,
     api_key: '', weight: String(deployment.weight || ''), rpm: String(deployment.rpm || ''), tpm: String(deployment.tpm || ''),
@@ -35,20 +34,20 @@ function DeploymentForm({ deployment }: { deployment?: Deployment }) {
     try {
       const result = deployment ? await updateMutation.mutateAsync({ id: deployment.id, input: form }) : await create.mutateAsync(form);
       toast.success(result.message);
-      setIsOpen(false);
+      onSaved();
     } catch (cause: unknown) {
       toast.error(cause instanceof Error ? cause.message : '保存节点失败');
     }
   };
   const deleteNode = async () => {
     if (!deployment || !window.confirm(`确定删除节点 ${deployment.provider}？`)) return;
-    try { const result = await remove.mutateAsync(deployment.id); toast.success(result.message); setIsOpen(false); }
+    try { const result = await remove.mutateAsync(deployment.id); toast.success(result.message); onSaved(); }
     catch (cause: unknown) { toast.error(cause instanceof Error ? cause.message : '删除节点失败'); }
   };
   const pending = create.isPending || updateMutation.isPending || remove.isPending;
   return (
-    <form onSubmit={save} className="space-y-5">
-      <div className="pr-10"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{deployment ? 'EDIT DEPLOYMENT' : 'NEW DEPLOYMENT'}</p><h2 className="mt-1 text-xl font-bold">{deployment ? deployment.provider : '新增模型节点'}</h2><p className="mt-1 text-xs text-muted-foreground">同一模型组下的节点自动加入 LiteLLM 负载均衡池。</p></div>
+    <form onSubmit={save}>
+      <DialogHeader><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{deployment ? '编辑节点' : '新增节点'}</p><DialogTitle>{deployment ? deployment.provider : '新增模型节点'}</DialogTitle><DialogDescription>同一模型组下的节点自动加入 LiteLLM 负载均衡池。</DialogDescription></DialogHeader>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="space-y-2"><Label>公开模型组</Label><select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={form.model_name} onChange={(e) => update('model_name', e.target.value)} required>{session?.allowed_models?.map((model) => <option key={model} value={model}>{model}</option>)}</select></label>
         <label className="space-y-2"><Label>上游模型</Label><Input value={form.upstream_model} onChange={(e) => update('upstream_model', e.target.value)} placeholder="openai/deepseek-v4-flash" required /></label>
@@ -58,19 +57,25 @@ function DeploymentForm({ deployment }: { deployment?: Deployment }) {
         <label className="space-y-2"><Label>RPM</Label><Input value={form.rpm} onChange={(e) => update('rpm', e.target.value)} placeholder="不限制" /></label>
         <label className="space-y-2"><Label>TPM</Label><Input value={form.tpm} onChange={(e) => update('tpm', e.target.value)} placeholder="不限制" /></label>
       </div>
-      <p className="rounded-xl bg-primary/10 p-3 text-xs leading-5 text-primary">密钥只发送到 Paply Gateway 服务端并由 LiteLLM 加密保存，浏览器不会再次读取。</p>
-      <div className="flex items-center justify-between gap-2">{deployment ? <Button type="button" variant="destructive" onClick={deleteNode} disabled={pending}><Trash2 className="size-4" />删除</Button> : <span />}<div className="flex gap-2"><MorphingDialogClose className="static rounded-xl border border-border px-4 py-2 text-sm">取消</MorphingDialogClose><Button type="submit" className="rounded-xl" disabled={pending}>{pending ? '保存中…' : '保存节点'}</Button></div></div>
+      <p className="mt-5 rounded-xl bg-primary/10 p-3 text-xs leading-5 text-primary">密钥只发送到 Paply Gateway 服务端并由 LiteLLM 加密保存，浏览器不会再次读取。</p>
+      <DialogFooter className={deployment ? 'justify-between' : undefined}>{deployment ? <Button type="button" variant="destructive" onClick={deleteNode} disabled={pending}><Trash2 className="size-4" />删除</Button> : null}<div className="flex gap-2"><DialogClose asChild><Button type="button" variant="outline">取消</Button></DialogClose><Button type="submit" disabled={pending}>{pending ? '保存中…' : '保存节点'}</Button></div></DialogFooter>
     </form>
   );
 }
 
 export function ModelsActions() {
   const refresh = useRefreshHealth();
+  const [createOpen, setCreateOpen] = useState(false);
   const refreshHealth = async () => {
     try { const { counts } = await refresh.mutateAsync(); toast.success(`健康检查完成：${counts.healthy} 健康，${counts.unhealthy} 异常，${counts.unknown} 未知`); }
     catch (cause: unknown) { toast.error(cause instanceof Error ? cause.message : '刷新失败'); }
   };
-  return <div className="flex items-center gap-2"><Button variant="ghost" size="icon" className="rounded-xl" onClick={refreshHealth} disabled={refresh.isPending} aria-label="刷新节点健康"><RefreshCw className={cn('size-4', refresh.isPending && 'animate-spin')} /></Button><MorphingDialog><MorphingDialogTrigger ariaLabel="新增模型节点" className="grid size-9 place-items-center rounded-xl text-muted-foreground transition-colors hover:text-foreground"><Plus className="size-5" /></MorphingDialogTrigger><MorphingDialogContainer><MorphingDialogContent className="relative max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto rounded-3xl border border-border bg-card p-6"><DeploymentForm /></MorphingDialogContent></MorphingDialogContainer></MorphingDialog></div>;
+  return <div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="rounded-xl" onClick={refreshHealth} disabled={refresh.isPending} aria-label="刷新节点健康"><RefreshCw className={cn('size-4', refresh.isPending && 'animate-spin')} /></Button><Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogTrigger asChild><Button variant="ghost" size="icon" className="rounded-xl" aria-label="新增模型节点"><Plus className="size-5" /></Button></DialogTrigger><DialogContent><DeploymentForm onSaved={() => setCreateOpen(false)} /></DialogContent></Dialog></div>;
+}
+
+function NodeEditDialog({ node }: { node: Deployment }) {
+  const [open, setOpen] = useState(false);
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="ghost" size="icon" className="size-7 rounded-lg" aria-label={`编辑节点 ${node.provider}`}><Pencil className="size-3.5" /></Button></DialogTrigger><DialogContent><DeploymentForm deployment={node} onSaved={() => setOpen(false)} /></DialogContent></Dialog>;
 }
 
 function NodeItem({ node, index }: { node: Deployment; index: number }) {
@@ -94,7 +99,7 @@ function NodeItem({ node, index }: { node: Deployment; index: number }) {
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#4e70ff] text-white"><Bot className="size-4" /></span>
         <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{node.upstream}</p><p className="truncate text-[10px] text-muted-foreground">{node.provider}</p></div>
         <button type="button" className={cn('p-1', healthy ? 'text-primary' : 'text-muted-foreground')} onClick={testNode} disabled={test.isPending} title={node.health.label}>{healthy ? <CircleCheck className="size-4" /> : <Circle className="size-4" />}</button>
-        <MorphingDialog><MorphingDialogTrigger ariaLabel={`编辑节点 ${node.provider}`} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="size-3.5" /></MorphingDialogTrigger><MorphingDialogContainer><MorphingDialogContent className="relative max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto rounded-3xl border border-border bg-card p-6"><DeploymentForm deployment={node} /></MorphingDialogContent></MorphingDialogContainer></MorphingDialog>
+        <NodeEditDialog node={node} />
         <button type="button" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={toggleNode} disabled={toggle.isPending} title={node.blocked ? '启用' : '停用'}><Power className="size-3.5" /></button>
       </div>
       <div className="mt-2 flex items-center gap-2 pl-17 text-[10px] text-muted-foreground"><span>权重 {node.weight || '默认'}</span><span>RPM {node.rpm || '—'}</span><span>TPM {node.tpm || '—'}</span></div>

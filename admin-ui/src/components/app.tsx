@@ -1,16 +1,12 @@
-import { lazy, Suspense, useDeferredValue, useEffect, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '@/api/user';
 import { AppShell } from '@/components/app-shell';
 import { LoginForm } from '@/components/modules/login';
-import { pageImports } from '@/lib/page-preload';
+import { ModelsActions, ModelsPage } from '@/components/paply/models';
+import { OverviewPage } from '@/components/paply/overview';
+import { SystemPage } from '@/components/paply/system';
+import { UsersPage } from '@/components/paply/users';
 import { useAppStore } from '@/stores/app';
-
-const OverviewPage = lazy(() => pageImports.home().then((module) => ({ default: module.OverviewPage })));
-const UsersPage = lazy(() => pageImports.users().then((module) => ({ default: module.UsersPage })));
-const ModelsPage = lazy(() => pageImports.models().then((module) => ({ default: module.ModelsPage })));
-const ModelsActions = lazy(() => pageImports.models().then((module) => ({ default: module.ModelsActions })));
-const SystemPage = lazy(() => pageImports.system().then((module) => ({ default: module.SystemPage })));
 
 function InitialLoadingGate({ children }: { children: ReactNode }) {
   useEffect(() => {
@@ -28,7 +24,6 @@ export function AppContainer() {
   const { isAuthenticated, isLoading } = useAuth();
   const currentPage = useAppStore((state) => state.currentPage);
   const syncFromLocation = useAppStore((state) => state.syncFromLocation);
-  const visiblePage = useDeferredValue(currentPage);
 
   useEffect(() => {
     window.addEventListener('popstate', syncFromLocation);
@@ -40,23 +35,13 @@ export function AppContainer() {
 
   return (
     <InitialLoadingGate>
-      <AppShell actions={visiblePage === 'models' ? <Suspense fallback={null}><ModelsActions /></Suspense> : undefined}>
-        <AnimatePresence mode="sync">
-          <motion.div
-            key={visiblePage}
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }}
-            exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
-            className="absolute inset-0 min-h-0 overflow-hidden"
-          >
-            <Suspense fallback={null}>
-              {visiblePage === 'home' ? <OverviewPage /> : null}
-              {visiblePage === 'users' ? <UsersPage /> : null}
-              {visiblePage === 'models' ? <ModelsPage /> : null}
-              {visiblePage === 'system' ? <SystemPage /> : null}
-            </Suspense>
-          </motion.div>
-        </AnimatePresence>
+      <AppShell actions={currentPage === 'models' ? <ModelsActions /> : undefined}>
+        <div className="absolute inset-0 min-h-0 overflow-hidden">
+          {currentPage === 'home' ? <OverviewPage /> : null}
+          {currentPage === 'users' ? <UsersPage /> : null}
+          {currentPage === 'models' ? <ModelsPage /> : null}
+          {currentPage === 'system' ? <SystemPage /> : null}
+        </div>
       </AppShell>
     </InitialLoadingGate>
   );
