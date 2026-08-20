@@ -36,7 +36,10 @@ def _image_bytes(value: Any) -> tuple[bytes, str]:
 
 class DashScopeImageEditConfig(BaseImageEditConfig):
     def get_supported_openai_params(self, model: str) -> list:
-        return ["image", "prompt", "n", "size"]
+        # Gateway materializes DashScope's signed URL as b64_json after LiteLLM
+        # returns, so accepting response_format here preserves the OpenAI Images
+        # contract without forwarding an unsupported provider parameter.
+        return ["image", "prompt", "n", "size", "response_format"]
 
     def map_openai_params(
         self,
@@ -181,6 +184,14 @@ def install_dashscope_image_edit() -> None:
             mapped["size"] = size.replace("x", "*")
         return mapped
 
+    def get_supported_image_generation_params(
+        self: DashScopeImageGenerationConfig,
+        model: str,
+    ) -> list:
+        # response_format is fulfilled by the Gateway's URL-to-base64 response
+        # adapter and intentionally omitted from the DashScope request body.
+        return ["n", "size", "response_format"]
+
     original_transform = DashScopeImageGenerationConfig.transform_image_generation_request
 
     def transform_image_generation_request(
@@ -207,6 +218,9 @@ def install_dashscope_image_edit() -> None:
         return document
 
     DashScopeImageGenerationConfig.map_openai_params = map_image_generation_params
+    DashScopeImageGenerationConfig.get_supported_openai_params = (
+        get_supported_image_generation_params
+    )
     DashScopeImageGenerationConfig.transform_image_generation_request = (
         transform_image_generation_request
     )
