@@ -12,6 +12,9 @@ litellm_settings:
   success_callback: [prometheus]
 
 router_settings:
+  # Randomly distribute traffic across healthy deployments in each model group.
+  # A deployment weight, RPM, or TPM configured in LiteLLM's UI refines the split.
+  routing_strategy: simple-shuffle
   enable_pre_call_checks: true
   redis_host: redis
   redis_port: 6379

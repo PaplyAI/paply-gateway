@@ -40,7 +40,7 @@ The Paply management dashboard reads the latest 30-day prompt, completion, and t
 
 ## Provider routing on a mainland China host
 
-Chat, vision, and image generation deployments are maintained in LiteLLM's PostgreSQL-backed native control plane. The desktop continues to use the stable `paply-chat`, `paply-vision`, and `paply-image` aliases. Add multiple deployments with the same alias for load balancing, and configure `weight`, `order`, RPM, TPM, and the routing strategy in LiteLLM. Before enabling a deployment, verify from the target host that the upstream is reachable and that its selected LiteLLM provider adapter supports the corresponding Responses, Chat Completions, or Images route.
+Chat, vision, and image generation deployments are maintained in LiteLLM's PostgreSQL-backed native control plane. The desktop continues to use the stable `paply-chat`, `paply-vision`, and `paply-image` aliases. Add multiple deployments with the same alias for load balancing. The checked-in Router strategy is `simple-shuffle`: without capacity metadata it distributes requests randomly; numeric `weight`, RPM, or TPM values configured per deployment in LiteLLM refine the split. Before enabling a deployment, verify from the target host that the upstream is reachable and that its selected LiteLLM provider adapter supports the corresponding Responses, Chat Completions, or Images route.
 
 Provider credentials stay only in the `litellm` container. Do not put a domestic provider key into `config/paply-models.yaml`, a desktop setting, or the public Gateway response.
 
