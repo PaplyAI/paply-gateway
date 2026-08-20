@@ -18,13 +18,13 @@
     <thead><tr><th>用户</th><th>模型权限</th><th>消费 / 预算</th><th>周期</th><th>限制</th><th>状态</th><th></th></tr></thead>
     <tbody>{% for user in data.users %}
       <tr>
-        <td><strong>{{ user.alias }}</strong><code class="block-code">{{ user.user_id }}</code></td>
-        <td><div class="tag-list">{% for model in user.models %}<span>{{ model }}</span>{% endfor %}</div></td>
-        <td><div class="budget-cell"><div><strong>{{ user.spend }}</strong><span>/ {{ user.budget }}</span></div><div class="progress"><i style="width: {{ user.budget_percent }}%"></i></div></div></td>
-        <td>{{ user.duration }}</td>
-        <td><span class="limit-copy">RPM {{ user.rpm_limit or '—' }}<br />TPM {{ user.tpm_limit or '—' }}<br />并发 {{ user.max_parallel_requests or '—' }}</span></td>
-        <td><span class="state-chip {% if user.blocked %}blocked{% endif %}">{{ '已停用' if user.blocked else '正常' }}</span></td>
-        <td>
+        <td data-label="用户"><strong>{{ user.alias }}</strong><code class="block-code">{{ user.user_id }}</code></td>
+        <td data-label="模型权限"><div class="tag-list">{% for model in user.models %}<span>{{ model }}</span>{% endfor %}</div></td>
+        <td data-label="消费 / 预算"><div class="budget-cell"><div><strong>{{ user.spend }}</strong><span>/ {{ user.budget }}</span></div><div class="progress"><i style="width: {{ user.budget_percent }}%"></i></div></div></td>
+        <td data-label="周期">{{ user.duration }}</td>
+        <td data-label="限制"><span class="limit-copy">RPM {{ user.rpm_limit or '—' }}<br />TPM {{ user.tpm_limit or '—' }}<br />并发 {{ user.max_parallel_requests or '—' }}</span></td>
+        <td data-label="状态"><span class="state-chip {% if user.blocked %}blocked{% endif %}">{{ '已停用' if user.blocked else '正常' }}</span></td>
+        <td data-label="操作">
           <button class="small-button" type="button" data-dialog-open="user-{{ loop.index }}">编辑</button>
           <dialog id="user-{{ loop.index }}" class="form-dialog">
         <form method="post" action="/users/{{ user.user_id }}/budget">

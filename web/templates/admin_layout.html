@@ -2,29 +2,29 @@
 {% block body_class %}admin-page{% endblock %}
 {% block body %}
 <div class="app-shell">
-  <aside class="sidebar">
-    <a class="sidebar-brand" href="/overview" aria-label="Paply Gateway 首页">
-      <span class="brand-mark"><img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="PaplyAI" /></span>
-      <span><strong>PaplyAI</strong><small>Gateway 管理中心</small></span>
+  <aside class="sidebar" aria-label="Paply Gateway 导航">
+    <a class="sidebar-brand" href="/overview" aria-label="Paply Gateway 首页" title="Paply Gateway">
+      <img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="" />
     </a>
 
     <nav aria-label="主要导航">
-      <a class="nav-item {% if active_page == 'overview' %}active{% endif %}" href="/overview"><span class="nav-icon">⌁</span><span>运行概览</span></a>
-      <a class="nav-item {% if active_page == 'users' %}active{% endif %}" href="/users"><span class="nav-icon">♙</span><span>用户与预算</span></a>
-      <a class="nav-item {% if active_page == 'models' %}active{% endif %}" href="/models"><span class="nav-icon">◇</span><span>模型与节点</span></a>
-      <a class="nav-item {% if active_page == 'system' %}active{% endif %}" href="/system"><span class="nav-icon">◌</span><span>系统状态</span></a>
+      <a class="nav-item {% if active_page == 'overview' %}active{% endif %}" href="/overview" aria-label="运行概览" title="运行概览"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/><path d="M9 20v-6h6v6"/></svg><span class="nav-label">运行概览</span></a>
+      <a class="nav-item {% if active_page == 'users' %}active{% endif %}" href="/users" aria-label="用户与预算" title="用户与预算"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.25"/><path d="M5.5 20c.6-4 2.75-6 6.5-6s5.9 2 6.5 6"/></svg><span class="nav-label">用户与预算</span></a>
+      <a class="nav-item {% if active_page == 'models' %}active{% endif %}" href="/models" aria-label="模型与节点" title="模型与节点"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="m8.2 7.3 2.6 8M15.8 7.3l-2.6 8M8.5 6h7"/></svg><span class="nav-label">模型与节点</span></a>
+      <a class="nav-item {% if active_page == 'system' %}active{% endif %}" href="/system" aria-label="系统状态" title="系统状态"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .35 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6v.08h-4V20a1.7 1.7 0 0 0-1.88-.35l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H3.9v-4H4a1.7 1.7 0 0 0 .35-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V3.9h4V4a1.7 1.7 0 0 0 1.88.35l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 .6 1h.08v4H20a1.7 1.7 0 0 0-.6 1Z"/></svg><span class="nav-label">系统状态</span></a>
     </nav>
 
     <div class="sidebar-footer">
-      <div class="account-block"><span class="avatar">{{ username[0] | upper }}</span><span><strong>{{ username }}</strong><small>Gateway 管理员</small></span></div>
+      <div class="account-block" title="{{ username }} · Gateway 管理员"><span class="avatar">{{ username[0] | upper }}</span><span class="account-copy"><strong>{{ username }}</strong><small>Gateway 管理员</small></span></div>
       <form method="post" action="/logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <button class="text-button" type="submit">退出登录</button>
+        <button class="logout-button" type="submit" aria-label="退出登录" title="退出登录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5.5A1.5 1.5 0 0 0 4 6.5v11A1.5 1.5 0 0 0 5.5 19H10M14 8l4 4-4 4M8 12h10"/></svg></button>
       </form>
     </div>
   </aside>
 
   <main class="content">
+    <div class="mobile-shell-brand"><img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="" /><strong>Paply Gateway</strong></div>
     {% if flash %}<div class="alert alert-{{ flash.level }} page-alert" role="status">{{ flash.message }}</div>{% endif %}
     {% if error %}<div class="alert alert-error page-alert" role="alert">{{ error }}</div>{% endif %}
     {% block page %}{% endblock %}
