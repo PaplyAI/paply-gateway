@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Circle, CircleCheck, CircleX, Pencil, Plus, Power, RefreshCw, Trash2, X } from 'lucide-react';
+import { Check, Circle, CircleCheck, CircleX, Copy, Pencil, Plus, Power, RefreshCw, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Deployment, DeploymentInput, ModelGroup } from '@/api/admin';
 import {
@@ -8,7 +8,6 @@ import {
 } from '@/api/admin';
 import { useAuthStore } from '@/api/user';
 import { Button } from '@/components/ui/button';
-import { CopyIconButton } from '@/components/common/CopyButton';
 import {
   Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
@@ -88,6 +87,25 @@ function CreateNodeDialog({ modelName, compact = false }: { modelName?: string; 
   );
 }
 
+function ModelNameCopyButton({ modelName }: { modelName: string }) {
+  const [copied, setCopied] = useState(false);
+  const copyModelName = async () => {
+    try {
+      await navigator.clipboard.writeText(modelName);
+      setCopied(true);
+      toast.success('模型名已复制');
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (cause: unknown) {
+      toast.error(cause instanceof Error ? cause.message : '复制模型名失败');
+    }
+  };
+  return (
+    <button type="button" onClick={copyModelName} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`复制模型名 ${modelName}`}>
+      {copied ? <Check className="size-4 text-primary" /> : <Copy className="size-4" />}
+    </button>
+  );
+}
+
 function DeleteNodeDialog({ node }: { node: Deployment }) {
   const [open, setOpen] = useState(false);
   const remove = useDeleteDeployment();
@@ -159,7 +177,7 @@ function GroupCard({ group }: { group: ModelGroup }) {
       <header className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0"><h2 className="truncate text-lg font-bold">{group.name}</h2><p className="mt-1 text-xs text-muted-foreground">{group.active_count} 启用 · {group.deployment_count} 节点</p></div>
         <div className="flex shrink-0 items-center gap-0.5">
-          <Tooltip><TooltipTrigger asChild><span><CopyIconButton text={group.name} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" copyIconClassName="size-4" checkIconClassName="size-4 text-primary" /></span></TooltipTrigger><TooltipContent side="top">复制模型名</TooltipContent></Tooltip>
+          <Tooltip><TooltipTrigger asChild><span><ModelNameCopyButton modelName={group.name} /></span></TooltipTrigger><TooltipContent side="top">复制模型名</TooltipContent></Tooltip>
           <CreateNodeDialog modelName={group.name} compact />
         </div>
       </header>
