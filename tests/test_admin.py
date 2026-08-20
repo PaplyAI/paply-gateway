@@ -323,6 +323,84 @@ def test_model_mutations_and_connection_test_use_deployment_id(tmp_path: Path) -
     assert ("POST", "/model/delete", {"id": "deployment-one"}) in calls
 
 
+def test_connection_test_does_not_treat_http_200_as_healthy(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/model/info":
+            return overview_handler(request)
+        if request.url.path == "/health":
+            assert request.url.params["model_id"] == "deployment-one"
+            return httpx.Response(
+                200,
+                json={
+                    "healthy_endpoints": [],
+                    "unhealthy_endpoints": [
+                        {
+                            "model_id": "deployment-one",
+                            "error": "provider-secret-must-never-render",
+                        }
+                    ],
+                },
+            )
+        raise AssertionError(f"unexpected upstream call: {request.url}")
+
+    app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        login(client)
+        page = client.get("/models")
+        response = client.post(
+            "/models/deployments/deployment-one/test",
+            data={"csrf_token": csrf_from(page.text)},
+            follow_redirects=True,
+        )
+
+    assert response.status_code == 200
+    assert "节点检测未通过：上游检查失败" in response.text
+    assert "health-unhealthy" in response.text
+    assert "provider-secret-must-never-render" not in response.text
+
+
+def test_bulk_health_refresh_caches_each_active_deployment_state(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/model/info":
+            return overview_handler(request)
+        if request.url.path == "/health":
+            deployment_id = request.url.params["model_id"]
+            bucket = (
+                "healthy_endpoints"
+                if deployment_id == "deployment-one"
+                else "unhealthy_endpoints"
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "healthy_endpoints": (
+                        [{"model_id": deployment_id}] if bucket == "healthy_endpoints" else []
+                    ),
+                    "unhealthy_endpoints": (
+                        [{"model_id": deployment_id}] if bucket == "unhealthy_endpoints" else []
+                    ),
+                },
+            )
+        raise AssertionError(f"unexpected upstream call: {request.url}")
+
+    app = create_admin_app(admin_settings(tmp_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        login(client)
+        page = client.get("/models")
+        response = client.post(
+            "/models/health/refresh",
+            data={"csrf_token": csrf_from(page.text)},
+            follow_redirects=True,
+        )
+
+    assert response.status_code == 200
+    assert "1 个健康，1 个异常，0 个未知" in response.text
+    assert response.text.count("health-healthy") == 1
+    assert response.text.count("health-unhealthy") == 1
+    assert "节点健康" in response.text
+    assert "上游检查失败" in response.text
+
+
 def test_update_user_budget_is_csrf_protected(tmp_path: Path) -> None:
     payloads: list[dict[str, Any]] = []
 

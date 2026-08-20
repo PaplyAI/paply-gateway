@@ -3,7 +3,10 @@
 {% block page %}
 <header class="topbar">
   <div><p class="eyebrow">模型数据面</p><h1>模型与节点</h1><p>管理稳定模型别名下的 provider 节点和负载参数。</p></div>
-  <div class="topbar-actions"><button class="primary-button inline-primary" type="button" data-dialog-open="create-deployment">新增节点</button></div>
+  <div class="topbar-actions">
+    <form method="post" action="/models/health/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button class="secondary-button" type="submit">刷新节点健康</button></form>
+    <button class="primary-button inline-primary" type="button" data-dialog-open="create-deployment">新增节点</button>
+  </div>
 </header>
 {% if data %}
 <section class="metric-grid compact-metrics">
@@ -18,9 +21,9 @@
     <div class="panel-header"><div><p class="eyebrow">MODEL GROUP</p><h2>{{ group.name }}</h2><p>客户端始终请求该稳定别名，LiteLLM 使用 simple-shuffle 在健康节点间分流。</p></div><div class="group-counts"><span class="state-chip">{{ group.active_count }} 启用</span><span class="count-chip">{{ group.deployment_count }} 节点</span></div></div>
     <div class="deployment-list">
     {% for node in group.deployments %}
-      <article class="deployment-card {% if node.blocked %}is-blocked{% endif %}">
+      <article class="deployment-card health-{{ node.health.state }} {% if node.blocked %}is-blocked{% endif %}">
         <div class="deployment-status"><span class="health-dot"></span></div>
-        <div class="deployment-main"><div class="deployment-title"><strong>{{ node.provider }}</strong><span class="state-chip {% if node.blocked %}blocked{% endif %}">{{ '已停用' if node.blocked else '参与路由' }}</span></div><span>{{ node.upstream }}</span><code>{{ node.api_base }}</code><small>ID {{ node.id }}</small></div>
+        <div class="deployment-main"><div class="deployment-title"><strong>{{ node.provider }}</strong><span class="state-chip {% if node.blocked or node.health.state == 'unhealthy' %}blocked{% elif node.health.state == 'unknown' %}unknown{% endif %}">{{ '已停用' if node.blocked else node.health.label }}</span></div><span>{{ node.upstream }}</span><code>{{ node.api_base }}</code><small>ID {{ node.id }}{% if node.health.checked_at %} · 检测于 {{ node.health.checked_at }}{% endif %}</small></div>
         <dl class="deployment-limits"><div><dt>权重</dt><dd>{{ node.weight or '默认' }}</dd></div><div><dt>RPM</dt><dd>{{ node.rpm or '—' }}</dd></div><div><dt>TPM</dt><dd>{{ node.tpm or '—' }}</dd></div></dl>
         <div class="deployment-actions">
           <form method="post" action="/models/deployments/{{ node.id }}/test"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button class="small-button" type="submit">测试</button></form>

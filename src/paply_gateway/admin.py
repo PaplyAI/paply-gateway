@@ -239,7 +239,53 @@ def _user_rows(document: Any) -> list[dict[str, Any]]:
     return users
 
 
-def _model_groups(document: Any) -> list[dict[str, Any]]:
+def _health_timestamp() -> str:
+    return datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _health_endpoint_matches(endpoint: Any, deployment_id: str) -> bool:
+    if isinstance(endpoint, str):
+        return endpoint == deployment_id
+    if not isinstance(endpoint, dict):
+        return False
+    model_info = endpoint.get("model_info")
+    nested_id = model_info.get("id") if isinstance(model_info, dict) else None
+    return endpoint.get("model_id") == deployment_id or nested_id == deployment_id
+
+
+def _deployment_health_result(document: Any, deployment_id: str) -> dict[str, str]:
+    checked_at = _health_timestamp()
+    if not isinstance(document, dict):
+        return {"state": "unknown", "label": "结果不可识别", "checked_at": checked_at}
+    healthy = document.get("healthy_endpoints")
+    unhealthy = document.get("unhealthy_endpoints")
+    healthy_rows = healthy if isinstance(healthy, list) else []
+    unhealthy_rows = unhealthy if isinstance(unhealthy, list) else []
+    if any(_health_endpoint_matches(row, deployment_id) for row in unhealthy_rows):
+        return {"state": "unhealthy", "label": "上游检查失败", "checked_at": checked_at}
+    if any(_health_endpoint_matches(row, deployment_id) for row in healthy_rows):
+        return {"state": "healthy", "label": "节点健康", "checked_at": checked_at}
+    return {"state": "unknown", "label": "未返回目标节点", "checked_at": checked_at}
+
+
+async def _check_deployment_health(
+    client: httpx.AsyncClient,
+    settings: Settings,
+    deployment_id: str,
+) -> dict[str, str]:
+    result = await _litellm_json(
+        client,
+        settings,
+        "/health",
+        params=[("model_id", deployment_id)],
+    )
+    return _deployment_health_result(result, deployment_id)
+
+
+def _model_groups(
+    document: Any,
+    health_by_id: dict[str, dict[str, str]] | None = None,
+) -> list[dict[str, Any]]:
     rows = document.get("data", []) if isinstance(document, dict) else []
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in rows:
@@ -252,6 +298,10 @@ def _model_groups(document: Any) -> list[dict[str, Any]]:
             continue
         api_base = str(params.get("api_base") or "")
         hostname = urlparse(api_base).hostname or "未配置地址"
+        health = (health_by_id or {}).get(
+            deployment_id,
+            {"state": "unknown", "label": "尚未检测", "checked_at": ""},
+        )
         groups[str(item.get("model_name") or "未知模型")].append(
             {
                 "id": deployment_id,
@@ -265,6 +315,7 @@ def _model_groups(document: Any) -> list[dict[str, Any]]:
                 "mode": info.get("mode") or _deployment_mode(str(item.get("model_name") or "")),
                 "blocked": bool(item.get("blocked") or info.get("blocked")),
                 "db_model": info.get("db_model") is True,
+                "health": health,
             }
         )
     return [
@@ -294,9 +345,13 @@ async def _users_data(client: httpx.AsyncClient, settings: Settings) -> dict[str
     }
 
 
-async def _models_data(client: httpx.AsyncClient, settings: Settings) -> dict[str, Any]:
+async def _models_data(
+    client: httpx.AsyncClient,
+    settings: Settings,
+    health_by_id: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
     result = await _litellm_json(client, settings, "/model/info")
-    groups = _model_groups(result)
+    groups = _model_groups(result, health_by_id)
     return {
         "groups": groups,
         "group_count": len(groups),
@@ -432,6 +487,7 @@ def create_admin_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        application.state.deployment_health = {}
         application.state.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(20.0, connect=5.0),
             transport=transport,
@@ -563,11 +619,21 @@ def create_admin_app(
 
     @application.get("/models", response_class=HTMLResponse)
     async def models_page(request: Request) -> Any:
+        async def load_models(
+            client: httpx.AsyncClient,
+            settings: Settings,
+        ) -> dict[str, Any]:
+            return await _models_data(
+                client,
+                settings,
+                request.app.state.deployment_health,
+            )
+
         return await render_data_page(
             request,
             template_name="models.html",
             active_page="models",
-            loader=_models_data,
+            loader=load_models,
             failure_message="暂时无法读取模型节点，请检查 LiteLLM 后重试。",
         )
 
@@ -770,6 +836,7 @@ def create_admin_app(
                 method="POST",
                 json_body=payload,
             )
+            request.app.state.deployment_health.pop(normalized_id, None)
             LOGGER.info("admin_model_deployment_updated")
             _set_flash(request, "模型节点配置已更新。")
         except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
@@ -800,6 +867,7 @@ def create_admin_app(
                 method="POST",
                 json_body={"model_info": {"id": normalized_id}, "blocked": blocked},
             )
+            request.app.state.deployment_health.pop(normalized_id, None)
             LOGGER.info("admin_model_deployment_state_updated")
             _set_flash(request, "模型节点状态已更新。")
         except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
@@ -819,22 +887,98 @@ def create_admin_app(
     ) -> RedirectResponse:
         if not _is_authenticated(request):
             return RedirectResponse("/login", status_code=303)
+        normalized_id: str | None = None
         try:
             _verify_csrf(request, csrf_token)
             normalized_id = _validated_deployment_id(deployment_id)
-            await _litellm_json(
+            health = await _check_deployment_health(
                 request.app.state.http_client,
                 runtime_settings,
-                "/health",
-                params=[("model_id", normalized_id)],
+                normalized_id,
             )
+            request.app.state.deployment_health[normalized_id] = health
             LOGGER.info("admin_model_deployment_tested")
-            _set_flash(request, "节点连接测试完成，LiteLLM 返回健康。")
+            if health["state"] != "healthy":
+                _set_flash(request, f"节点检测未通过：{health['label']}。", "error")
+            else:
+                _set_flash(request, "节点连接测试完成，上游健康。")
         except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            if normalized_id and not isinstance(error, AdminInputError):
+                request.app.state.deployment_health[normalized_id] = {
+                    "state": "unknown",
+                    "label": "健康检查不可达",
+                    "checked_at": _health_timestamp(),
+                }
             return mutation_error(
                 request,
                 target="/models",
                 event="admin_model_deployment_test_failed",
+                error=error,
+            )
+        return RedirectResponse("/models", status_code=303)
+
+    @application.post("/models/health/refresh")
+    async def refresh_deployment_health(
+        request: Request,
+        csrf_token: str = Form(...),
+    ) -> RedirectResponse:
+        if not _is_authenticated(request):
+            return RedirectResponse("/login", status_code=303)
+        try:
+            _verify_csrf(request, csrf_token)
+            model_document = await _litellm_json(
+                request.app.state.http_client,
+                runtime_settings,
+                "/model/info",
+            )
+            groups = _model_groups(model_document)
+            deployment_ids = [
+                node["id"]
+                for group in groups
+                for node in group["deployments"]
+                if not node["blocked"]
+            ]
+            results = await asyncio.gather(
+                *(
+                    _check_deployment_health(
+                        request.app.state.http_client,
+                        runtime_settings,
+                        deployment_id,
+                    )
+                    for deployment_id in deployment_ids
+                ),
+                return_exceptions=True,
+            )
+            counts = {"healthy": 0, "unhealthy": 0, "unknown": 0}
+            for deployment_id, result in zip(deployment_ids, results, strict=True):
+                if isinstance(result, BaseException):
+                    health = {
+                        "state": "unknown",
+                        "label": "健康检查不可达",
+                        "checked_at": _health_timestamp(),
+                    }
+                    LOGGER.error(
+                        "admin_model_deployment_health_failed",
+                        extra={"error_type": type(result).__name__},
+                    )
+                else:
+                    health = result
+                request.app.state.deployment_health[deployment_id] = health
+                counts[health["state"]] += 1
+            level = "success" if counts["unhealthy"] == counts["unknown"] == 0 else "error"
+            _set_flash(
+                request,
+                "节点健康刷新完成："
+                f"{counts['healthy']} 个健康，{counts['unhealthy']} 个异常，"
+                f"{counts['unknown']} 个未知。",
+                level,
+            )
+            LOGGER.info("admin_model_deployment_health_refreshed")
+        except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:
+            return mutation_error(
+                request,
+                target="/models",
+                event="admin_model_deployment_health_refresh_failed",
                 error=error,
             )
         return RedirectResponse("/models", status_code=303)
@@ -857,6 +1001,7 @@ def create_admin_app(
                 method="POST",
                 json_body={"id": normalized_id},
             )
+            request.app.state.deployment_health.pop(normalized_id, None)
             LOGGER.info("admin_model_deployment_deleted")
             _set_flash(request, "模型节点已删除。")
         except (AdminInputError, httpx.RequestError, httpx.HTTPStatusError) as error:

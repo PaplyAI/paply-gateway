@@ -89,10 +89,12 @@ input::placeholder { color: #aaa09a; }
 .status-pill { gap: 8px; min-height: 40px; padding: 0 14px; color: #486a54; border: 1px solid rgba(71, 116, 89, .16); background: rgba(102, 156, 117, .08); }
 .status-pill i, .health-dot { width: 7px; height: 7px; border-radius: 50%; background: #5d9870; box-shadow: 0 0 0 4px rgba(93, 152, 112, .12); }
 .status-error { color: var(--danger); background: rgba(162, 71, 62, .08); }
-.status-error i, .unhealthy .health-dot { background: #bd6258; box-shadow: 0 0 0 4px rgba(189, 98, 88, .12); }
+.status-error i, .unhealthy .health-dot, .health-unhealthy .health-dot { background: #bd6258; box-shadow: 0 0 0 4px rgba(189, 98, 88, .12); }
+.health-unknown .health-dot, .is-blocked .health-dot { background: #a99e97; box-shadow: 0 0 0 4px rgba(142, 130, 123, .12); }
 .count-chip { min-height: 28px; padding: 0 11px; color: #71665f; background: var(--soft-card); }
 .state-chip { min-height: 25px; padding: 0 9px; color: var(--success); background: rgba(88, 145, 104, .1); }
 .state-chip.blocked { color: var(--danger); background: rgba(160, 71, 59, .1); }
+.state-chip.unknown { color: #756a63; background: rgba(117, 106, 99, .1); }
 .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 10px; }
 .compact-metrics { margin-bottom: 20px; }
 .metric-card { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); }
