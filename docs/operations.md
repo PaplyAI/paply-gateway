@@ -40,9 +40,17 @@ The Paply management dashboard reads the latest 30-day prompt, completion, and t
 
 ## Provider routing on a mainland China host
 
-Chat, vision, and image generation have separate `PAPLY_*_UPSTREAM_MODEL`, `PAPLY_*_API_BASE`, and `PAPLY_*_API_KEY` settings. They may point at different OpenAI-compatible upstreams while the desktop continues to use the stable `paply-chat`, `paply-vision`, and `paply-image` aliases. Before deployment, verify from the target host that each upstream is reachable and that its selected LiteLLM provider adapter supports the corresponding Responses, Chat Completions, or Images route.
+Chat, vision, and image generation deployments are maintained in LiteLLM's PostgreSQL-backed native control plane. The desktop continues to use the stable `paply-chat`, `paply-vision`, and `paply-image` aliases. Add multiple deployments with the same alias for load balancing, and configure `weight`, `order`, RPM, TPM, and the routing strategy in LiteLLM. Before enabling a deployment, verify from the target host that the upstream is reachable and that its selected LiteLLM provider adapter supports the corresponding Responses, Chat Completions, or Images route.
 
 Provider credentials stay only in the `litellm` container. Do not put a domestic provider key into `config/paply-models.yaml`, a desktop setting, or the public Gateway response.
+
+Legacy deployments marked `Defined in config` must be migrated before removing
+the static `model_list`. Run `scripts/migrate_static_models.py` without
+`--apply`, review the plan, take a PostgreSQL backup, run it again with
+`--apply`, and verify that `/model/info` reports `model_info.db_model=true` for
+all three Paply aliases. Only then deploy the empty `model_list`. Never delete
+or rotate `LITELLM_SALT_KEY` during this migration because LiteLLM uses it to
+encrypt provider credentials in PostgreSQL.
 
 ## Secrets
 
@@ -81,7 +89,7 @@ Never switch production to a floating `main` or `latest` image.
 ## Incident signals
 
 - `/health/live` failing means the Paply edge process is unavailable.
-- `/health/ready` failing means LiteLLM is unavailable or unhealthy.
+- `/health/ready` failing means the account store or LiteLLM is unavailable, or one of the public model aliases delivered to desktop is missing from LiteLLM.
 - `/api/models` `401` means missing, expired, or invalid user identity.
 - `/api/models` `503` means validation could not be completed; clients must not reuse the response as if refresh succeeded.
 - `/v1/*` `502` means the edge could not establish a LiteLLM request.

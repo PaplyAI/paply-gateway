@@ -18,6 +18,7 @@
 - `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key.
 - The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.
 - `litellm` is pinned to the official signed release image and owns provider routing, virtual keys, budgets, rate limits, token counts, and spend logs.
+- Upstream deployments are owned by LiteLLM's PostgreSQL-backed control plane and are managed through the native LiteLLM UI/API. `config/litellm.yaml` must not contain production provider deployments or credentials. Multiple deployments sharing a `paply-*` model name form that alias's load-balancing pool.
 - PostgreSQL is the durable source of truth for LiteLLM users, keys, budgets, and spend.
 - Redis is for LiteLLM coordination and rate limiting. It is never the durable usage source of truth.
 - The LiteLLM admin port binds to loopback in local Compose. Production ingress must expose only the Paply edge unless an authenticated operator network is explicitly configured.
@@ -38,6 +39,7 @@
 - Logs may contain route, method, status, duration, and request ID only. Query strings are intentionally excluded.
 - Provider failures remain observable through status codes and structured errors. The edge does not retry billable LLM requests.
 - Health checks never include secret material.
+- Gateway readiness authenticates to LiteLLM with the internal service credential and must fail when any public model alias from `paply-models.yaml` is absent; process liveness alone is not readiness.
 
 ## Validation
 

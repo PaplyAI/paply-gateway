@@ -40,7 +40,7 @@ Paply Desktop
 
 ```bash
 cp .env.example .env
-# 编辑 .env，替换所有 change-me，并填写真实 provider key
+# 编辑 .env，替换所有 change-me；启动后在 LiteLLM 控制台添加 provider deployment
 docker compose up -d --build
 curl http://127.0.0.1:4387/health/ready
 ```
@@ -83,11 +83,25 @@ docker compose config --quiet
 
 ## 配置入口
 
-- `config/litellm.yaml`：公开模型别名到上游 provider 模型的路由。
+- `config/litellm.yaml`：LiteLLM 的认证、数据库、Redis 和 Router 基础配置；上游 deployment 不写入该文件。
 - `config/paply-models.yaml`：下发给 desktop 的模型能力元数据，不含任何密钥。
-- `PAPLY_CHAT_*` / `PAPLY_VISION_*` / `PAPLY_IMAGE_*`：三类能力可分别配置兼容上游的模型、Base URL 与 API Key，公开别名保持稳定。
+- LiteLLM 原生控制台：在 PostgreSQL 中维护上游模型、Base URL、API Key、权重、顺序与 RPM/TPM；同一 `paply-*` 公开别名下的多个 deployment 由 LiteLLM Router 负载均衡。
 - `PAPLY_SKILLS_CATALOG_HOST_PATH`：只读挂载 PaplyAI 官方技能目录，由 Gateway 输出远程可下载的目录协议。
-- `.env`：provider、数据库、Redis 和管理密钥；永不提交。
+- `.env`：数据库、Redis、服务认证和管理密钥；永不提交 provider key。
 - `compose.yaml`：本地单节点拓扑。生产应使用托管 PostgreSQL/Redis、TLS ingress 和独立备份策略。
 
 LiteLLM 官方资料：[Docker 快速开始](https://docs.litellm.ai/docs/proxy/docker_quick_start)、[Custom Auth](https://docs.litellm.ai/docs/proxy/custom_auth)、[成本追踪](https://docs.litellm.ai/docs/proxy/cost_tracking)。
+
+已有环境从静态 deployment 迁移时，先保留旧 `.env` 中的 `PAPLY_CHAT_*`、
+`PAPLY_VISION_*`、`PAPLY_IMAGE_*` 和 provider key，运行只读预检：
+
+```bash
+set -a
+. ./.env
+set +a
+python3 scripts/migrate_static_models.py
+python3 scripts/migrate_static_models.py --apply
+```
+
+脚本确认数据库 deployment 后，才可部署空 `model_list` 的新配置并重建 LiteLLM。
+迁移后的 provider key 可从 `.env` 删除；`LITELLM_SALT_KEY` 必须保持不变。

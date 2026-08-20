@@ -293,6 +293,40 @@ def test_readiness_surfaces_litellm_failure(config_path: Path) -> None:
     assert response.json() == {"ok": False, "litellm": "status-503"}
 
 
+def test_readiness_requires_every_public_model(config_path: Path) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == httpx.URL("http://litellm.test/v1/models")
+        assert request.headers["authorization"] == "Bearer test-internal-service-token"
+        assert request.headers["x-paply-user-id"] == "paply-readiness"
+        return httpx.Response(200, json={"object": "list", "data": []})
+
+    app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "ok": False,
+        "litellm": "models-unavailable",
+        "missingModels": ["paply-chat"],
+    }
+
+
+def test_readiness_accepts_database_managed_public_models(config_path: Path) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"object": "list", "data": [{"id": "paply-chat", "object": "model"}]},
+        )
+
+    app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "litellm": "ready"}
+
+
 def test_production_rejects_insecure_public_url(config_path: Path) -> None:
     with pytest.raises(ValidationError, match="must use HTTPS"):
         make_settings(

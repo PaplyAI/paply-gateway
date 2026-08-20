@@ -68,6 +68,18 @@ class ModelsTemplate(StrictModel):
     vision: MediaProviderTemplate | None
     image_gen: MediaProviderTemplate | None = Field(alias="imageGen")
 
+    def required_model_ids(self) -> set[str]:
+        model_ids = {
+            model.id
+            for provider in self.chat.providers
+            for model in provider.models
+        }
+        if self.vision is not None:
+            model_ids.add(self.vision.model_id)
+        if self.image_gen is not None:
+            model_ids.add(self.image_gen.model_id)
+        return model_ids
+
     def materialize(self, *, base_url: str) -> dict[str, object]:
         document = self.model_dump(by_alias=True, exclude_none=True)
         chat = document["chat"]

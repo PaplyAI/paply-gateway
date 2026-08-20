@@ -1,23 +1,7 @@
-model_list:
-  - model_name: paply-chat
-    litellm_params:
-      model: os.environ/PAPLY_CHAT_UPSTREAM_MODEL
-      api_base: os.environ/PAPLY_CHAT_API_BASE
-      api_key: os.environ/PAPLY_CHAT_API_KEY
-
-  - model_name: paply-vision
-    litellm_params:
-      model: os.environ/PAPLY_VISION_UPSTREAM_MODEL
-      api_base: os.environ/PAPLY_VISION_API_BASE
-      api_key: os.environ/PAPLY_VISION_API_KEY
-
-  - model_name: paply-image
-    litellm_params:
-      model: os.environ/PAPLY_IMAGE_UPSTREAM_MODEL
-      api_base: os.environ/PAPLY_IMAGE_API_BASE
-      api_key: os.environ/PAPLY_IMAGE_API_KEY
-    model_info:
-      mode: image_generation
+# Deployments are managed through LiteLLM's PostgreSQL-backed control plane.
+# Keeping this list empty makes every upstream editable from the native UI and
+# prevents an uneditable config-owned deployment from joining a model group.
+model_list: []
 
 litellm_settings:
   telemetry: false

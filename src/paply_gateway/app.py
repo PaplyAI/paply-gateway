@@ -180,8 +180,12 @@ def create_app(
             )
         try:
             response = await client.get(
-                f"{runtime_settings.paply_litellm_url}/health/liveliness",
-                headers={"x-request-id": request.state.request_id},
+                f"{runtime_settings.paply_litellm_url}/v1/models",
+                headers={
+                    "authorization": f"Bearer {runtime_settings.litellm_service_token}",
+                    "x-paply-user-id": "paply-readiness",
+                    "x-request-id": request.state.request_id,
+                },
             )
         except httpx.RequestError:
             return JSONResponse(status_code=503, content={"ok": False, "litellm": "unreachable"})
@@ -189,6 +193,36 @@ def create_app(
             return JSONResponse(
                 status_code=503,
                 content={"ok": False, "litellm": f"status-{response.status_code}"},
+            )
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            _json_log("litellm_models_readiness_invalid", request_id=request.state.request_id)
+            return JSONResponse(
+                status_code=503,
+                content={"ok": False, "litellm": "invalid-models-response"},
+            )
+        available_models = {
+            item.get("id")
+            for item in payload["data"]
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+        missing_models = sorted(models_template.required_model_ids() - available_models)
+        if missing_models:
+            _json_log(
+                "litellm_models_readiness_missing",
+                request_id=request.state.request_id,
+                missing_models=missing_models,
+            )
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "ok": False,
+                    "litellm": "models-unavailable",
+                    "missingModels": missing_models,
+                },
             )
         return JSONResponse(content={"ok": True, "litellm": "ready"})
 
