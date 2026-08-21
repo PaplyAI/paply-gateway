@@ -22,9 +22,9 @@ from pydantic import BaseModel
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from paply_gateway import __version__
-from paply_gateway.models import load_models_template
-from paply_gateway.settings import Settings
+from paplyai_gateway import __version__
+from paplyai_gateway.models import load_models_template
+from paplyai_gateway.settings import Settings
 
 LOGGER = logging.getLogger("paply.admin")
 WEB_ROOT = Path("web").resolve()
@@ -478,8 +478,8 @@ async def _probe(
 async def _system_data(client: httpx.AsyncClient, settings: Settings) -> dict[str, Any]:
     authorization = {"authorization": f"Bearer {settings.master_key}"}
     probes = await asyncio.gather(
-        _probe(client, f"{settings.paply_gateway_internal_url}/health/live"),
-        _probe(client, f"{settings.paply_gateway_internal_url}/health/ready"),
+        _probe(client, f"{settings.paplyai_gateway_internal_url}/health/live"),
+        _probe(client, f"{settings.paplyai_gateway_internal_url}/health/ready"),
         _probe(client, f"{settings.paply_litellm_url}/health/liveliness"),
         _probe(
             client,
@@ -488,8 +488,8 @@ async def _system_data(client: httpx.AsyncClient, settings: Settings) -> dict[st
         ),
     )
     components = [
-        {"name": "Paply Gateway 进程", "description": "产品 API 与身份边界", **probes[0]},
-        {"name": "Paply Gateway 就绪", "description": "账户库与公开模型协议", **probes[1]},
+        {"name": "PaplyAI Gateway 进程", "description": "产品 API 与身份边界", **probes[0]},
+        {"name": "PaplyAI Gateway 就绪", "description": "账户库与公开模型协议", **probes[1]},
         {"name": "LiteLLM 进程", "description": "模型数据面", **probes[2]},
         {"name": "LiteLLM 就绪", "description": "PostgreSQL 与路由依赖", **probes[3]},
     ]
@@ -531,7 +531,7 @@ def create_admin_app(
             await application.state.http_client.aclose()
 
     application = FastAPI(
-        title="Paply Gateway 管理中心",
+        title="PaplyAI Gateway 管理中心",
         version=__version__,
         lifespan=lifespan,
         docs_url=None,
@@ -1001,7 +1001,7 @@ def create_admin_app(
         if not index.is_file():
             raise HTTPException(
                 status_code=503,
-                detail="Paply Gateway 管理前端尚未构建。",
+                detail="PaplyAI Gateway 管理前端尚未构建。",
             )
         return FileResponse(index, headers={"Cache-Control": "no-store"})
 

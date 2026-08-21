@@ -15,15 +15,15 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
-from paply_gateway import __version__
-from paply_gateway.accounts import (
+from paplyai_gateway import __version__
+from paplyai_gateway.accounts import (
     Account,
     AccountExistsError,
     AccountStore,
     InvalidCredentialsError,
     InvalidRefreshSessionError,
 )
-from paply_gateway.auth import (
+from paplyai_gateway.auth import (
     AccountDocument,
     LoginRequest,
     LogoutRequest,
@@ -33,11 +33,11 @@ from paply_gateway.auth import (
     bearer_identity,
     encode_access_token,
 )
-from paply_gateway.models import ModelsTemplate, load_models_template
-from paply_gateway.settings import Settings
-from paply_gateway.skills import SkillCatalog, create_skill_archive, load_skill_catalog
+from paplyai_gateway.models import ModelsTemplate, load_models_template
+from paplyai_gateway.settings import Settings
+from paplyai_gateway.skills import SkillCatalog, create_skill_archive, load_skill_catalog
 
-LOGGER = logging.getLogger("paply.gateway")
+LOGGER = logging.getLogger("paplyai.gateway")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -191,7 +191,7 @@ def create_app(
             _json_log("gateway_stopped")
 
     application = FastAPI(
-        title="Paply Gateway",
+        title="PaplyAI Gateway",
         version=__version__,
         lifespan=lifespan,
         docs_url=None,
@@ -222,7 +222,7 @@ def create_app(
 
     @application.get("/")
     async def root() -> dict[str, str]:
-        return {"name": "paply-gateway", "version": __version__}
+        return {"name": "paplyai-gateway", "version": __version__}
 
     @application.get("/health/live")
     async def liveness() -> dict[str, bool]:
@@ -435,7 +435,8 @@ def create_app(
         return models_template.materialize(base_url=runtime_settings.public_v1_base_url)
 
     @application.get("/api/skills")
-    async def skills_config() -> dict[str, object]:
+    async def skills_config(request: Request) -> dict[str, object]:
+        bearer_identity(request, runtime_settings)
         if skills_catalog is None:
             raise HTTPException(
                 status_code=503,
@@ -444,7 +445,8 @@ def create_app(
         return skills_catalog.public_document(runtime_settings.paply_public_base_url)
 
     @application.get("/api/skills/{skill_id}/artifact")
-    async def skill_artifact(skill_id: str) -> FileResponse:
+    async def skill_artifact(skill_id: str, request: Request) -> FileResponse:
+        bearer_identity(request, runtime_settings)
         if skills_catalog is None:
             raise HTTPException(
                 status_code=503,

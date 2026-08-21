@@ -2,8 +2,8 @@
 {% block body_class %}admin-page{% endblock %}
 {% block body %}
 <div class="app-shell">
-  <aside class="sidebar" aria-label="Paply Gateway 导航">
-    <a class="sidebar-brand" href="/overview" aria-label="Paply Gateway 首页" title="Paply Gateway">
+  <aside class="sidebar" aria-label="PaplyAI Gateway 导航">
+    <a class="sidebar-brand" href="/overview" aria-label="PaplyAI Gateway 首页" title="PaplyAI Gateway">
       <img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="" />
     </a>
 
@@ -24,11 +24,11 @@
   </aside>
 
   <main class="content">
-    <div class="mobile-shell-brand"><img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="" /><strong>Paply Gateway</strong></div>
+    <div class="mobile-shell-brand"><img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="" /><strong>PaplyAI Gateway</strong></div>
     {% if flash %}<div class="alert alert-{{ flash.level }} page-alert" role="status">{{ flash.message }}</div>{% endif %}
     {% if error %}<div class="alert alert-error page-alert" role="alert">{{ error }}</div>{% endif %}
     {% block page %}{% endblock %}
-    <footer>Paply Gateway v{{ version }} · 身份、模型访问与用量治理</footer>
+    <footer>PaplyAI Gateway v{{ version }} · 身份、模型访问与用量治理</footer>
   </main>
 </div>
 {% endblock %}

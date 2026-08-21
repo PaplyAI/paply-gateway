@@ -1,6 +1,6 @@
 # Upstream attribution
 
-The Paply Gateway admin frontend is derived from the Octopus frontend:
+The PaplyAI Gateway admin frontend is derived from the Octopus frontend:
 
 - Source: https://github.com/bestruirui/octopus
 - Upstream commit: `a9f65c8d45e98bd65e95db7d80ec2c38409bc96e`

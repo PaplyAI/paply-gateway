@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}登录 · Paply Gateway{% endblock %}
+{% block title %}登录 · PaplyAI Gateway{% endblock %}
 {% block body_class %}login-page{% endblock %}
 {% block body %}
 <main class="login-shell">
-  <section class="login-brand" aria-label="Paply Gateway">
+  <section class="login-brand" aria-label="PaplyAI Gateway">
     <div class="brand-mark brand-mark-large">
       <img src="{{ url_for('static', path='/paplyai-logo.png') }}" alt="PaplyAI" />
     </div>
@@ -26,7 +26,7 @@
     </div>
     <p class="eyebrow">管理控制台</p>
     <h2 id="login-heading">欢迎回来</h2>
-    <p class="muted">请使用管理员账号登录 Paply Gateway 管理中心。</p>
+    <p class="muted">请使用管理员账号登录 PaplyAI Gateway 管理中心。</p>
 
     {% if error %}
       <div class="alert alert-error" role="alert">{{ error }}</div>

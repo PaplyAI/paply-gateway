@@ -6,8 +6,8 @@ from typing import Any
 import httpx
 from fastapi.testclient import TestClient
 
-from paply_gateway.admin import create_admin_app
-from paply_gateway.settings import Settings
+from paplyai_gateway.admin import create_admin_app
+from paplyai_gateway.settings import Settings
 
 
 def admin_settings(tmp_path: Path) -> Settings:
@@ -35,7 +35,7 @@ imageGen:
     )
     return Settings(
         paply_environment="development",
-        paply_gateway_internal_url="http://gateway.test",
+        paplyai_gateway_internal_url="http://gateway.test",
         paply_litellm_url="http://litellm.test",
         paply_litellm_ui_public_url="http://litellm-ui.test:4000",
         paply_public_base_url="http://gateway.test",
@@ -132,7 +132,7 @@ def test_spa_shell_is_public_but_admin_api_requires_session(tmp_path: Path) -> N
         for path in ("/", "/overview", "/users", "/models", "/system", "/login"):
             response = client.get(path)
             assert response.status_code == 200
-            assert "Paply Gateway" in response.text
+            assert "PaplyAI Gateway" in response.text
             assert "/static/admin-app/" in response.text
         session = client.get("/api/admin/session")
         protected = client.get("/api/admin/overview")

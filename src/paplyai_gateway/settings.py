@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     paply_environment: Literal["development", "staging", "production"] = "development"
-    paply_gateway_internal_url: str = "http://127.0.0.1:4387"
+    paplyai_gateway_internal_url: str = "http://127.0.0.1:4387"
     paply_litellm_url: str = "http://127.0.0.1:4000"
     paply_litellm_ui_public_url: str | None = None
     paply_public_base_url: str = "http://127.0.0.1:4387"
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     paply_accounts_db_path: Path = Path("data/accounts.sqlite3")
     paply_auth_jwt_secret: SecretStr | None = None
     paply_auth_jwt_issuer: str = "paply"
-    paply_auth_jwt_audience: str = "paply-gateway"
+    paply_auth_jwt_audience: str = "paplyai-gateway"
     paply_auth_access_token_seconds: int = 3600
     paply_auth_refresh_token_seconds: int = 30 * 24 * 3600
     paply_default_user_budget: float = 20.0
@@ -41,8 +41,8 @@ class Settings(BaseSettings):
         self.paply_litellm_url = self._validate_origin(
             self.paply_litellm_url, "PAPLY_LITELLM_URL"
         )
-        self.paply_gateway_internal_url = self._validate_origin(
-            self.paply_gateway_internal_url, "PAPLY_GATEWAY_INTERNAL_URL"
+        self.paplyai_gateway_internal_url = self._validate_origin(
+            self.paplyai_gateway_internal_url, "PAPLY_GATEWAY_INTERNAL_URL"
         )
         self.paply_public_base_url = self._validate_origin(
             self.paply_public_base_url, "PAPLY_PUBLIC_BASE_URL"
@@ -117,5 +117,5 @@ class Settings(BaseSettings):
     @staticmethod
     def _required_secret(value: SecretStr | None, name: str) -> str:
         if value is None or not value.get_secret_value().strip():
-            raise RuntimeError(f"{name} is required for the Paply Gateway runtime")
+            raise RuntimeError(f"{name} is required for the PaplyAI Gateway runtime")
         return value.get_secret_value().strip()

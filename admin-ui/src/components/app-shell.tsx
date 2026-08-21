@@ -9,7 +9,7 @@ export function AppShell({ children, actions }: { children: ReactNode; actions?:
     const currentPage = useAppStore((state) => state.currentPage);
     const setCurrentPage = useAppStore((state) => state.setCurrentPage);
     const activeIndex = NAV_ITEMS.findIndex((route) => route.id === currentPage); // activeIndex 表示选中项在 Dock 中的位置。
-    const currentLabel = NAV_ITEMS[activeIndex]?.label ?? 'Paply Gateway';
+    const currentLabel = NAV_ITEMS[activeIndex]?.label ?? 'PaplyAI Gateway';
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null); // hoveredIndex 表示当前悬浮项的位置。
     const [isNavHovered, setIsNavHovered] = useState(false); // isNavHovered 表示悬浮背景是否显示。
 

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tarfile
 import tempfile
 from pathlib import Path
@@ -15,7 +16,7 @@ class StrictModel(BaseModel):
 
 
 class SkillCatalogEntry(StrictModel):
-    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{1,63}$")
+    id: str = Field(pattern=r"^paplyai-[a-z0-9][a-z0-9-]{1,55}$")
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)
     version: str = "1.0.0"
@@ -28,11 +29,17 @@ class SkillCatalogEntry(StrictModel):
     source_revision: str | None = Field(default=None, alias="sourceRevision")
     runtime: str | None = None
     sha256: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+    replaces: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def require_available_artifact(self) -> "SkillCatalogEntry":
         if self.status == "available" and not (self.download_url or self.artifact_path):
             raise ValueError("available skills require downloadUrl or artifactPath")
+        if any(
+            not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", legacy_id)
+            for legacy_id in self.replaces
+        ):
+            raise ValueError("replaced skill ids must be valid legacy ids")
         return self
 
 
@@ -46,6 +53,11 @@ class SkillCatalog(StrictModel):
         ids = [skill.id for skill in self.skills]
         if len(ids) != len(set(ids)):
             raise ValueError("skill ids must be unique")
+        replaced_ids = [legacy_id for skill in self.skills for legacy_id in skill.replaces]
+        if len(replaced_ids) != len(set(replaced_ids)):
+            raise ValueError("replaced skill ids must be unique")
+        if set(ids).intersection(replaced_ids):
+            raise ValueError("a current skill id cannot also be a replaced skill id")
         for skill in self.skills:
             if skill.artifact_path:
                 self.resolve_artifact(skill)
@@ -100,7 +112,7 @@ def load_skill_catalog(path: Path) -> SkillCatalog:
 
 def create_skill_archive(catalog: SkillCatalog, skill: SkillCatalogEntry) -> Path:
     artifact = catalog.resolve_artifact(skill)
-    descriptor, archive_name = tempfile.mkstemp(prefix=f"paply-skill-{skill.id}-", suffix=".tgz")
+    descriptor, archive_name = tempfile.mkstemp(prefix=f"paplyai-skill-{skill.id}-", suffix=".tgz")
     os.close(descriptor)
     archive_path = Path(archive_name)
     try:

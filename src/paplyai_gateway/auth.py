@@ -10,8 +10,8 @@ from typing import Any
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from paply_gateway.accounts import Account
-from paply_gateway.settings import Settings
+from paplyai_gateway.accounts import Account
+from paplyai_gateway.settings import Settings
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 

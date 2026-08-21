@@ -28,7 +28,7 @@ export function LoginForm() {
         <header className="mb-8 flex flex-col items-center gap-3 text-center">
           <Logo size={56} />
           <div>
-            <h1 className="text-2xl font-bold">Paply Gateway</h1>
+            <h1 className="text-2xl font-bold">PaplyAI Gateway</h1>
             <p className="mt-1 text-sm text-muted-foreground">模型路由与用量管理中心</p>
           </div>
         </header>

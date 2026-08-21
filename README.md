@@ -1,4 +1,4 @@
-# Paply Gateway
+# PaplyAI Gateway
 
 Paply 论文 Agent 的模型网关工程。它以 [LiteLLM Proxy](https://github.com/BerriAI/litellm) 为数据面，负责真实 token 计量、用户/团队预算、限流和 Spend Logs；Paply 自有边缘服务负责登录会话认证、desktop 模型配置协议和 OpenAI 兼容流式入口。
 
@@ -37,11 +37,11 @@ Paply Desktop
 
 要求 Docker Compose v2、Python 3.12（仅本地脚本/测试需要）。Docker 镜像会在独立 Node 构建阶段编译管理前端，不要求宿主机安装 Node。
 
-本地默认假设 `paply-gateway` 与 `paplyai-skills-catalog` 两个仓库同级放置；若目录不同，通过 `PAPLY_SKILLS_CATALOG_HOST_PATH` 指向技能目录仓库。
+本地默认假设 `paplyai-gateway` 与 `paplyai-skills` 两个仓库同级放置；若目录不同，通过 `PAPLY_SKILLS_CATALOG_HOST_PATH` 指向技能目录仓库。
 
 ```bash
 cp .env.example .env
-# 编辑 .env，替换所有 change-me；启动后在 Paply Gateway 管理台添加模型节点
+# 编辑 .env，替换所有 change-me；启动后在 PaplyAI Gateway 管理台添加模型节点
 docker compose up -d --build
 curl http://127.0.0.1:4387/health/ready
 ```
@@ -96,7 +96,7 @@ docker compose config --quiet
 - `config/litellm.yaml`：LiteLLM 的认证、数据库、Redis 和 Router 基础配置；上游 deployment 不写入该文件。
 - `config/litellm_dashscope_image_edit.py`：固定 LiteLLM 版本的百炼 Qwen-Image 图生图兼容层；升级 LiteLLM 时必须重新评估并优先删除。
 - `config/paply-models.yaml`：下发给 desktop 的模型能力元数据，不含任何密钥。
-- Paply Gateway 管理台：日常维护上游模型、Base URL、API Key、权重、启停与 RPM/TPM；所有变更通过 LiteLLM 管理 API 写入 PostgreSQL，同一 `paply-*` 公开别名下的多个 deployment 由 LiteLLM Router 负载均衡。
+- PaplyAI Gateway 管理台：日常维护上游模型、Base URL、API Key、权重、启停与 RPM/TPM；所有变更通过 LiteLLM 管理 API 写入 PostgreSQL，同一 `paply-*` 公开别名下的多个 deployment 由 LiteLLM Router 负载均衡。
 - LiteLLM 原生控制台：仅用于 Paply 管理台尚未覆盖的高级诊断和底层能力。
 - `PAPLY_SKILLS_CATALOG_HOST_PATH`：只读挂载 PaplyAI 官方技能目录，由 Gateway 输出远程可下载的目录协议。
 - `.env`：数据库、Redis、服务认证和管理密钥；永不提交 provider key。

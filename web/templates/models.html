@@ -1,5 +1,5 @@
 {% extends "admin_layout.html" %}
-{% block title %}模型与节点 · Paply Gateway{% endblock %}
+{% block title %}模型与节点 · PaplyAI Gateway{% endblock %}
 {% block page %}
 <header class="topbar">
   <div><p class="eyebrow">模型数据面</p><h1>模型与节点</h1><p>管理稳定模型别名下的 provider 节点和负载参数。</p></div>
@@ -73,7 +73,7 @@
       <label><span>RPM</span><input name="rpm" type="number" min="1" placeholder="不限制" /></label>
       <label><span>TPM</span><input name="tpm" type="number" min="1" placeholder="不限制" /></label>
     </div>
-    <p class="form-note">密钥仅发送到 Paply Gateway 服务端，并由 LiteLLM 加密写入 PostgreSQL；页面不会再次回显。</p>
+    <p class="form-note">密钥仅发送到 PaplyAI Gateway 服务端，并由 LiteLLM 加密写入 PostgreSQL；页面不会再次回显。</p>
     <div class="dialog-actions"><button type="button" class="secondary-button" data-dialog-close>取消</button><button class="primary-button inline-primary" type="submit">创建节点</button></div>
   </form>
 </dialog>

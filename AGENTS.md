@@ -1,4 +1,4 @@
-# Paply Gateway engineering contract
+# PaplyAI Gateway engineering contract
 
 ## Non-negotiable rules
 
@@ -14,7 +14,13 @@
 ## Runtime architecture
 
 - `gateway` is the Paply-owned FastAPI edge. It owns the internal-pilot account registration/login/refresh/logout API, persists password hashes and hashed refresh sessions in its SQLite volume, serves `/api/models`, the PaplyAI `/api/skills` catalog and artifacts, liveness/readiness endpoints, and streams `/v1/*` to LiteLLM. Image generation/edit calls still pass through LiteLLM for accounting; the edge may buffer their small JSON responses only to materialize provider result URLs as OpenAI-compatible `b64_json` for Desktop.
-- The skills catalog is a desktop compatibility surface, not part of token accounting. Local artifact paths are resolved below the mounted catalog root, symlinks are rejected, and generated downloads must remain under the desktop's 50 MB artifact limit.
+- The skills catalog is sourced from the sibling `PaplyAI/paplyai-skills`
+  repository and is not part of token accounting. Every current ID must use
+  `paplyai-*`; `replaces` is the only protocol field for retired managed IDs.
+  Catalog and artifact endpoints require the same Paply login session as model
+  configuration. Local artifact paths are resolved below the mounted catalog
+  root, symlinks are rejected, and generated downloads must remain under the
+  desktop's 50 MB artifact limit.
 - `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key. Overview, users, models, and system status are separate routes. It is the daily control surface for LiteLLM deployments and user budgets; provider secrets are write-only and must never be rendered or stored in the browser session.
 - The admin SPA lives in `admin-ui/` and is derived from Octopus at the exact commit recorded in `admin-ui/UPSTREAM.md`. That frontend subtree remains AGPL-3.0-only; Paply branding, session authentication, JSON control-plane APIs, and write-only provider-secret handling are Paply-owned adaptations. Build it into `web/static/admin-app`; never serve the Octopus API-key authentication or product branding.
 - The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.
@@ -28,7 +34,10 @@
 ## Paply desktop contract
 
 - The desktop fetches authenticated `GET /api/models` and accepts chat transports `openai-responses` and `openai-completions` only.
-- The same configured Gateway origin supplies `GET /api/skills`; available local catalog entries are materialized as Gateway artifact URLs and local filesystem paths never cross the public API.
+- The same configured Gateway origin supplies authenticated `GET /api/skills`
+  and artifact downloads; available local catalog entries are materialized as
+  same-origin Gateway artifact URLs and local filesystem paths never cross the
+  public API.
 - The document contains only model metadata and the public Gateway `/v1` base URL. It never contains provider credentials, LiteLLM credentials, or a Paply session.
 - The desktop authenticates `/api/models` and `/v1/*` with a short-lived Paply access token. This is an application login session, not a model API key.
 - Registration provisions one stable LiteLLM user with `auto_create_key=false`; it never creates a client virtual key. The desktop encrypts the refresh token in the OS keychain-backed Electron safe storage and keeps the access token in the main process only.

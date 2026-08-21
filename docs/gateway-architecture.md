@@ -1,4 +1,4 @@
-# Paply Gateway architecture
+# PaplyAI Gateway architecture
 
 ```text
 Paply desktop main process

@@ -3,7 +3,7 @@ import argparse
 import os
 from time import time
 
-from paply_gateway.auth import encode_access_token
+from paplyai_gateway.auth import encode_access_token
 
 
 def main() -> None:
@@ -15,7 +15,7 @@ def main() -> None:
     parser.add_argument("--issuer", default=os.environ.get("PAPLY_AUTH_JWT_ISSUER", "paply"))
     parser.add_argument(
         "--audience",
-        default=os.environ.get("PAPLY_AUTH_JWT_AUDIENCE", "paply-gateway"),
+        default=os.environ.get("PAPLY_AUTH_JWT_AUDIENCE", "paplyai-gateway"),
     )
     arguments = parser.parse_args()
     if arguments.hours <= 0:

@@ -35,4 +35,4 @@ COPY --from=admin-ui-build /workspace/web/static/admin-app ./web/static/admin-ap
 USER paply
 EXPOSE 4387
 
-CMD ["uvicorn", "paply_gateway.main:app", "--host", "0.0.0.0", "--port", "4387", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["uvicorn", "paplyai_gateway.main:app", "--host", "0.0.0.0", "--port", "4387", "--proxy-headers", "--forwarded-allow-ips=*"]

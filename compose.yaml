@@ -1,4 +1,4 @@
-name: paply-gateway
+name: paplyai-gateway
 
 services:
   gateway:
@@ -16,7 +16,7 @@ services:
       PAPLY_ACCOUNTS_DB_PATH: /data/accounts.sqlite3
       PAPLY_AUTH_JWT_SECRET: ${PAPLY_AUTH_JWT_SECRET}
       PAPLY_AUTH_JWT_ISSUER: ${PAPLY_AUTH_JWT_ISSUER:-paply}
-      PAPLY_AUTH_JWT_AUDIENCE: ${PAPLY_AUTH_JWT_AUDIENCE:-paply-gateway}
+      PAPLY_AUTH_JWT_AUDIENCE: ${PAPLY_AUTH_JWT_AUDIENCE:-paplyai-gateway}
       PAPLY_AUTH_ACCESS_TOKEN_SECONDS: ${PAPLY_AUTH_ACCESS_TOKEN_SECONDS:-3600}
       PAPLY_AUTH_REFRESH_TOKEN_SECONDS: ${PAPLY_AUTH_REFRESH_TOKEN_SECONDS:-2592000}
       PAPLY_DEFAULT_USER_BUDGET: ${PAPLY_DEFAULT_USER_BUDGET:-20}
@@ -32,7 +32,7 @@ services:
       litellm:
         condition: service_healthy
     volumes:
-      - ${PAPLY_SKILLS_CATALOG_HOST_PATH:-../paplyai-skills-catalog}:/catalog:ro
+      - ${PAPLY_SKILLS_CATALOG_HOST_PATH:-../paplyai-skills}:/catalog:ro
       - gateway_accounts:/data
     healthcheck:
       test:
@@ -57,7 +57,7 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-100}
     restart: unless-stopped
-    command: ["uvicorn", "paply_gateway.admin_main:app", "--host", "0.0.0.0", "--port", "4390", "--proxy-headers", "--forwarded-allow-ips=*"]
+    command: ["uvicorn", "paplyai_gateway.admin_main:app", "--host", "0.0.0.0", "--port", "4390", "--proxy-headers", "--forwarded-allow-ips=*"]
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       PAPLY_ADMIN_PASSWORD: ${PAPLY_ADMIN_PASSWORD}

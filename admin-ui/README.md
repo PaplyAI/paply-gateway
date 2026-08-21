@@ -1,6 +1,6 @@
-# Paply Gateway Admin UI
+# PaplyAI Gateway Admin UI
 
-Paply Gateway 的 React 19 + TypeScript + Vite 管理前端。界面结构与基础组件派生自 Octopus；固定上游提交、修改范围和许可证见 [UPSTREAM.md](UPSTREAM.md) 与 [LICENSE](LICENSE)。
+PaplyAI Gateway 的 React 19 + TypeScript + Vite 管理前端。界面结构与基础组件派生自 Octopus；固定上游提交、修改范围和许可证见 [UPSTREAM.md](UPSTREAM.md) 与 [LICENSE](LICENSE)。
 
 本地开发：
 
@@ -9,7 +9,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Vite 默认监听 `http://localhost:5173`，并将 `/api` 代理到 `http://127.0.0.1:4390`。可通过 `VITE_PROXY_TARGET` 指向其他 Paply Gateway 管理服务。
+Vite 默认监听 `http://localhost:5173`，并将 `/api` 代理到 `http://127.0.0.1:4390`。可通过 `VITE_PROXY_TARGET` 指向其他 PaplyAI Gateway 管理服务。
 
 生产构建：
 

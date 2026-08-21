@@ -8,10 +8,10 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from paply_gateway.app import create_app
-from paply_gateway.auth import encode_access_token
-from paply_gateway.models import load_models_template
-from paply_gateway.settings import Settings
+from paplyai_gateway.app import create_app
+from paplyai_gateway.auth import encode_access_token
+from paplyai_gateway.models import load_models_template
+from paplyai_gateway.settings import Settings
 
 MODELS_TEMPLATE = """
 schemaVersion: 2
@@ -39,7 +39,7 @@ def make_settings(config_path: Path, **overrides: object) -> Settings:
         "paply_accounts_db_path": config_path.parent / "accounts.sqlite3",
         "paply_auth_jwt_secret": "test-paply-jwt-secret",
         "paply_auth_jwt_issuer": "paply-test",
-        "paply_auth_jwt_audience": "paply-gateway-test",
+        "paply_auth_jwt_audience": "paplyai-gateway-test",
         "paply_litellm_service_token": "test-internal-service-token",
         "litellm_master_key": "test-master-key",
         "paply_upstream_timeout_seconds": 10,
@@ -61,7 +61,7 @@ def access_token(user_id: str = "user-alice", *, expires_at: int = 4_000_000_000
         user_id=user_id,
         secret="test-paply-jwt-secret",
         issuer="paply-test",
-        audience="paply-gateway-test",
+        audience="paplyai-gateway-test",
         issued_at=1_700_000_000,
         expires_at=expires_at,
     )
@@ -390,7 +390,7 @@ def test_committed_models_template_matches_the_desktop_contract() -> None:
 
 
 def _write_skill_catalog(tmp_path: Path) -> Path:
-    artifact = tmp_path / "skills" / "academic-pipeline"
+    artifact = tmp_path / "skills" / "paplyai-academic-pipeline"
     artifact.mkdir(parents=True)
     (artifact / "SKILL.md").write_text("# Academic pipeline\n", encoding="utf-8")
     (artifact / "guide.md").write_text("Research guide\n", encoding="utf-8")
@@ -401,17 +401,17 @@ def _write_skill_catalog(tmp_path: Path) -> Path:
                 "schemaVersion": 1,
                 "skills": [
                     {
-                        "id": "academic-pipeline",
+                        "id": "paplyai-academic-pipeline",
                         "name": "科研全流程",
                         "description": "测试技能",
                         "version": "1.0.0",
                         "category": "research",
                         "downloadUrl": None,
-                        "artifactPath": "skills/academic-pipeline",
+                        "artifactPath": "skills/paplyai-academic-pipeline",
                         "status": "available",
                     },
                     {
-                        "id": "future-skill",
+                        "id": "paplyai-future-skill",
                         "name": "开发中技能",
                         "description": "尚未开放",
                         "category": "research",
@@ -437,13 +437,16 @@ def test_skills_catalog_materializes_gateway_artifact_urls(
     )
 
     with TestClient(app) as client:
-        response = client.get("/api/skills")
+        response = client.get(
+            "/api/skills",
+            headers={"authorization": f"Bearer {access_token()}"},
+        )
 
     assert response.status_code == 200
     document = response.json()
     assert document["schemaVersion"] == 1
     assert document["skills"][0]["downloadUrl"] == (
-        "https://gateway.paply.test/api/skills/academic-pipeline/artifact"
+        "https://gateway.paply.test/api/skills/paplyai-academic-pipeline/artifact"
     )
     assert "artifactPath" not in document["skills"][0]
     assert document["skills"][1]["downloadUrl"] is None
@@ -459,7 +462,10 @@ def test_skill_artifact_is_a_client_compatible_gzip_archive(
     )
 
     with TestClient(app) as client:
-        response = client.get("/api/skills/academic-pipeline/artifact")
+        response = client.get(
+            "/api/skills/paplyai-academic-pipeline/artifact",
+            headers={"authorization": f"Bearer {access_token()}"},
+        )
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/gzip")
@@ -477,9 +483,31 @@ def test_skills_endpoint_fails_closed_when_catalog_is_not_configured(
     app = create_app(make_settings(config_path))
 
     with TestClient(app) as client:
-        response = client.get("/api/skills")
+        response = client.get(
+            "/api/skills",
+            headers={"authorization": f"Bearer {access_token()}"},
+        )
 
     assert response.status_code == 503
+
+
+def test_skills_endpoints_require_a_paply_session(
+    config_path: Path,
+    tmp_path: Path,
+) -> None:
+    catalog_path = _write_skill_catalog(tmp_path)
+    app = create_app(
+        make_settings(config_path, paply_skills_catalog_path=catalog_path)
+    )
+
+    with TestClient(app) as client:
+        assert client.get("/api/skills").status_code == 401
+        assert (
+            client.get(
+                "/api/skills/paplyai-academic-pipeline/artifact"
+            ).status_code
+            == 401
+        )
 
 
 def test_skill_artifact_cannot_escape_catalog_root(
@@ -496,7 +524,7 @@ def test_skill_artifact_cannot_escape_catalog_root(
                 "schemaVersion": 1,
                 "skills": [
                     {
-                        "id": "outside-skill",
+                        "id": "paplyai-outside-skill",
                         "name": "非法技能",
                         "description": "路径越界",
                         "category": "test",

@@ -53,7 +53,7 @@ function DeploymentForm({ deployment, modelName, onSaved }: { deployment?: Deplo
         <label className="space-y-2"><Label>RPM</Label><Input value={form.rpm} onChange={(e) => update('rpm', e.target.value)} placeholder="不限制" /></label>
         <label className="space-y-2"><Label>TPM</Label><Input value={form.tpm} onChange={(e) => update('tpm', e.target.value)} placeholder="不限制" /></label>
       </div>
-      <p className="mt-5 rounded-xl bg-primary/10 p-3 text-xs leading-5 text-primary">密钥只发送到 Paply Gateway 服务端并由 LiteLLM 加密保存，浏览器不会再次读取。</p>
+      <p className="mt-5 rounded-xl bg-primary/10 p-3 text-xs leading-5 text-primary">密钥只发送到 PaplyAI Gateway 服务端并由 LiteLLM 加密保存，浏览器不会再次读取。</p>
       <DialogFooter><DialogClose asChild><Button type="button" variant="outline">取消</Button></DialogClose><Button type="submit" disabled={pending}>{pending ? '保存中…' : '保存节点'}</Button></DialogFooter>
     </form>
   );
