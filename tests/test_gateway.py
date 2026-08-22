@@ -399,13 +399,29 @@ def _write_skill_catalog(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "schemaVersion": 1,
+                "retiredSkillIds": ["paplyai-retired-skill", "legacy-writing"],
                 "skills": [
                     {
                         "id": "paplyai-academic-pipeline",
                         "name": "科研全流程",
                         "description": "测试技能",
+                        "translations": {
+                            "zh": {"name": "科研全流程", "description": "测试技能"},
+                            "en": {
+                                "name": "End-to-end research",
+                                "description": "Test research workflow",
+                            },
+                        },
                         "version": "1.0.0",
-                        "category": "research",
+                        "kind": "workflow",
+                        "category": "research-workflow",
+                        "order": 10,
+                        "requiredCapabilities": [
+                            "web-access",
+                            "planning",
+                            "image-engine",
+                        ],
+                        "composes": [],
                         "downloadUrl": None,
                         "artifactPath": "skills/paplyai-academic-pipeline",
                         "status": "available",
@@ -414,7 +430,11 @@ def _write_skill_catalog(tmp_path: Path) -> Path:
                         "id": "paplyai-future-skill",
                         "name": "开发中技能",
                         "description": "尚未开放",
-                        "category": "research",
+                        "kind": "skill",
+                        "category": "writing-expression",
+                        "order": 20,
+                        "requiredCapabilities": [],
+                        "composes": [],
                         "downloadUrl": None,
                         "status": "adapting",
                     },
@@ -445,11 +465,93 @@ def test_skills_catalog_materializes_gateway_artifact_urls(
     assert response.status_code == 200
     document = response.json()
     assert document["schemaVersion"] == 1
+    assert document["retiredSkillIds"] == [
+        "paplyai-retired-skill",
+        "legacy-writing",
+    ]
+    assert document["skills"][0]["id"] == "paplyai-academic-pipeline"
+    assert document["skills"][0]["name"] == "科研全流程"
+    assert document["skills"][0]["translations"]["en"] == {
+        "name": "End-to-end research",
+        "description": "Test research workflow",
+    }
+    assert document["skills"][0]["kind"] == "workflow"
+    assert document["skills"][0]["category"] == "research-workflow"
+    assert document["skills"][0]["order"] == 10
+    assert document["skills"][0]["requiredCapabilities"] == [
+        "web-access",
+        "planning",
+        "image-engine",
+    ]
+    assert document["skills"][0]["composes"] == []
     assert document["skills"][0]["downloadUrl"] == (
         "https://gateway.paply.test/api/skills/paplyai-academic-pipeline/artifact"
     )
     assert "artifactPath" not in document["skills"][0]
     assert document["skills"][1]["downloadUrl"] is None
+
+
+def test_skills_catalog_rejects_unknown_builtin_capability(
+    config_path: Path,
+    tmp_path: Path,
+) -> None:
+    catalog_path = _write_skill_catalog(tmp_path)
+    document = json.loads(catalog_path.read_text(encoding="utf-8"))
+    document["skills"][0]["requiredCapabilities"] = ["unknown-capability"]
+    catalog_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="skills catalog is invalid"):
+        create_app(
+            make_settings(config_path, paply_skills_catalog_path=catalog_path)
+        )
+
+
+def test_skills_catalog_rejects_incomplete_translations(
+    config_path: Path,
+    tmp_path: Path,
+) -> None:
+    catalog_path = _write_skill_catalog(tmp_path)
+    document = json.loads(catalog_path.read_text(encoding="utf-8"))
+    document["skills"][0]["translations"] = {
+        "zh": {"name": "科研全流程", "description": "测试技能"}
+    }
+    catalog_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="skills catalog is invalid"):
+        create_app(
+            make_settings(config_path, paply_skills_catalog_path=catalog_path)
+        )
+
+
+def test_skills_catalog_rejects_retired_current_skill_overlap(
+    config_path: Path,
+    tmp_path: Path,
+) -> None:
+    catalog_path = _write_skill_catalog(tmp_path)
+    document = json.loads(catalog_path.read_text(encoding="utf-8"))
+    document["retiredSkillIds"] = ["paplyai-academic-pipeline"]
+    catalog_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="skills catalog is invalid"):
+        create_app(
+            make_settings(config_path, paply_skills_catalog_path=catalog_path)
+        )
+
+
+def test_skills_catalog_rejects_composition_cycles(
+    config_path: Path,
+    tmp_path: Path,
+) -> None:
+    catalog_path = _write_skill_catalog(tmp_path)
+    document = json.loads(catalog_path.read_text(encoding="utf-8"))
+    document["skills"][0]["composes"] = ["paplyai-future-skill"]
+    document["skills"][1]["composes"] = ["paplyai-academic-pipeline"]
+    catalog_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="skills catalog is invalid"):
+        create_app(
+            make_settings(config_path, paply_skills_catalog_path=catalog_path)
+        )
 
 
 def test_skill_artifact_is_a_client_compatible_gzip_archive(
@@ -527,7 +629,11 @@ def test_skill_artifact_cannot_escape_catalog_root(
                         "id": "paplyai-outside-skill",
                         "name": "非法技能",
                         "description": "路径越界",
-                        "category": "test",
+                        "kind": "skill",
+                        "category": "document-delivery",
+                        "order": 10,
+                        "requiredCapabilities": ["document-suite"],
+                        "composes": [],
                         "artifactPath": f"../{outside.name}",
                         "status": "available",
                     }

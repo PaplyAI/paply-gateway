@@ -20,7 +20,17 @@
   Catalog and artifact endpoints require the same Paply login session as model
   configuration. Local artifact paths are resolved below the mounted catalog
   root, symlinks are rejected, and generated downloads must remain under the
-  desktop's 50 MB artifact limit.
+  desktop's 50 MB artifact limit. The Gateway strictly validates and publicly
+  forwards skill kind, category, display order, localized `zh`/`en` display
+  copy, Desktop built-in capability requirements, and acyclic canonical skill
+  composition. It never invents or
+  hard-codes product skill grouping independently of the skills repository.
+  `image-engine` is the single catalog capability ID for Desktop image
+  recognition and generation, while `/api/models` still delivers separate
+  `vision` and `imageGen` providers.
+  Skills absorbed into the product are removed from `skills` and exposed only
+  through top-level `retiredSkillIds`, allowing Desktop to archive existing
+  managed installations without inventing retirement state locally.
 - `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key. Overview, users, models, and system status are separate routes. It is the daily control surface for LiteLLM deployments and user budgets; provider secrets are write-only and must never be rendered or stored in the browser session.
 - The admin SPA lives in `admin-ui/` and is derived from Octopus at the exact commit recorded in `admin-ui/UPSTREAM.md`. That frontend subtree remains AGPL-3.0-only; Paply branding, session authentication, JSON control-plane APIs, and write-only provider-secret handling are Paply-owned adaptations. Build it into `web/static/admin-app`; never serve the Octopus API-key authentication or product branding.
 - The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.

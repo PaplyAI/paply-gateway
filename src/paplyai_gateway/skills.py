@@ -10,17 +10,42 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MAX_SKILL_ARTIFACT_BYTES = 50 * 1024 * 1024
 
+BuiltinCapabilityId = Literal[
+    "web-access",
+    "planning",
+    "swarm",
+    "document-suite",
+    "image-engine",
+]
+SkillCategory = Literal[
+    "research-workflow",
+    "document-delivery",
+    "visual-expression",
+    "writing-expression",
+]
+SkillKind = Literal["workflow", "skill"]
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class LocalizedDisplayCopy(StrictModel):
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
 
 
 class SkillCatalogEntry(StrictModel):
     id: str = Field(pattern=r"^paplyai-[a-z0-9][a-z0-9-]{1,55}$")
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)
+    translations: dict[Literal["zh", "en"], LocalizedDisplayCopy] | None = None
     version: str = "1.0.0"
-    category: str = Field(min_length=1)
+    kind: SkillKind
+    category: SkillCategory
+    order: int = Field(ge=0)
+    required_capabilities: list[BuiltinCapabilityId] = Field(alias="requiredCapabilities")
+    composes: list[str]
     download_url: str | None = Field(default=None, alias="downloadUrl")
     artifact_path: str | None = Field(default=None, alias="artifactPath")
     status: Literal["available", "adapting"]
@@ -40,11 +65,21 @@ class SkillCatalogEntry(StrictModel):
             for legacy_id in self.replaces
         ):
             raise ValueError("replaced skill ids must be valid legacy ids")
+        if len(self.required_capabilities) != len(set(self.required_capabilities)):
+            raise ValueError("required capability ids must be unique")
+        if len(self.composes) != len(set(self.composes)) or any(
+            not re.fullmatch(r"paplyai-[a-z0-9][a-z0-9-]{1,55}", skill_id)
+            for skill_id in self.composes
+        ):
+            raise ValueError("composed skill ids must be unique canonical ids")
+        if self.translations is not None and set(self.translations) != {"zh", "en"}:
+            raise ValueError("skill translations must contain exactly zh and en")
         return self
 
 
 class SkillCatalog(StrictModel):
     schema_version: Literal[1] = Field(alias="schemaVersion")
+    retired_skill_ids: list[str] = Field(default_factory=list, alias="retiredSkillIds")
     skills: list[SkillCatalogEntry]
     root: Path = Field(exclude=True)
 
@@ -58,6 +93,39 @@ class SkillCatalog(StrictModel):
             raise ValueError("replaced skill ids must be unique")
         if set(ids).intersection(replaced_ids):
             raise ValueError("a current skill id cannot also be a replaced skill id")
+        if len(self.retired_skill_ids) != len(set(self.retired_skill_ids)) or any(
+            not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", skill_id)
+            for skill_id in self.retired_skill_ids
+        ):
+            raise ValueError("retired skill ids must be unique valid managed ids")
+        if set(self.retired_skill_ids).intersection(ids) or set(
+            self.retired_skill_ids
+        ).intersection(replaced_ids):
+            raise ValueError("retired skill ids cannot overlap current or replaced ids")
+        orders = [skill.order for skill in self.skills]
+        if len(orders) != len(set(orders)):
+            raise ValueError("skill display order values must be unique")
+        known_ids = set(ids)
+        composition = {skill.id: skill.composes for skill in self.skills}
+        for skill in self.skills:
+            if skill.id in skill.composes or not set(skill.composes).issubset(known_ids):
+                raise ValueError(f"skill composition references an unknown or self id: {skill.id}")
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(skill_id: str) -> None:
+            if skill_id in visiting:
+                raise ValueError(f"skill composition contains a cycle: {skill_id}")
+            if skill_id in visited:
+                return
+            visiting.add(skill_id)
+            for composed_id in composition[skill_id]:
+                visit(composed_id)
+            visiting.remove(skill_id)
+            visited.add(skill_id)
+
+        for skill_id in ids:
+            visit(skill_id)
         for skill in self.skills:
             if skill.artifact_path:
                 self.resolve_artifact(skill)
@@ -91,7 +159,11 @@ class SkillCatalog(StrictModel):
             else:
                 item["downloadUrl"] = skill.download_url
             skills.append(item)
-        return {"schemaVersion": 1, "skills": skills}
+        return {
+            "schemaVersion": 1,
+            "retiredSkillIds": self.retired_skill_ids,
+            "skills": skills,
+        }
 
     def skill(self, skill_id: str) -> SkillCatalogEntry | None:
         return next((skill for skill in self.skills if skill.id == skill_id), None)

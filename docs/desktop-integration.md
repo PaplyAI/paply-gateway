@@ -71,6 +71,35 @@ session into Pi's in-memory runtime. Media requests resolve the same session
 directly. No concrete session enters `models.json`, `auth.json`, or the global
 process environment.
 
+## Skills catalog v1 localization
+
+`GET /api/skills` keeps the existing Chinese `name` and `description` strings
+as fallbacks for older Desktop versions. Current entries also carry complete
+user-facing copy for both supported app languages:
+
+```json
+{
+  "name": "科研全流程",
+  "description": "从研究问题到最终交付",
+  "translations": {
+    "zh": {
+      "name": "科研全流程",
+      "description": "从研究问题到最终交付"
+    },
+    "en": {
+      "name": "End-to-end research",
+      "description": "Move from a research question to final delivery"
+    }
+  }
+}
+```
+
+When `translations` is present, Gateway requires exactly non-empty `zh` and
+`en` entries and forwards them unchanged. Desktop switches between those
+entries locally with the app language; changing language does not require a
+catalog refetch. Catalogs without `translations` remain accepted during the
+client rollout and render their fallback strings.
+
 ## Account provisioning
 
 `POST /api/auth/register` creates the Paply account and provisions the same
