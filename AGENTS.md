@@ -35,10 +35,11 @@
 - The admin SPA lives in `admin-ui/` and is derived from Octopus at the exact commit recorded in `admin-ui/UPSTREAM.md`. That frontend subtree remains AGPL-3.0-only; Paply branding, session authentication, JSON control-plane APIs, and write-only provider-secret handling are Paply-owned adaptations. Build it into `web/static/admin-app`; never serve the Octopus API-key authentication or product branding.
 - The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.
 - The pinned wrapper also loads `config/litellm_dashscope_image_edit.py`: v1.96.0 already supports DashScope Qwen-Image generation but not edits, so the compatibility module adds the missing JSON edit transform and corrects the provider's `n` parameter mapping. Keep it isolated, covered by container smoke tests, and remove it when a reviewed LiteLLM upgrade provides equivalent behavior.
+- The pinned wrapper applies `scripts/patch_litellm_session_affinity.py` to LiteLLM v1.96.0 at image build. Upstream session affinity silently returns to the healthy deployment pool when the pinned deployment is unavailable; Paply must instead return no eligible deployment so a stateful Responses turn fails visibly rather than crossing providers. The patch asserts the exact upstream source shape and must fail the image build after an incompatible LiteLLM upgrade.
 - `litellm` is pinned to the official signed release image and owns provider routing, virtual keys, budgets, rate limits, token counts, and spend logs.
-- Upstream deployments are owned by LiteLLM's PostgreSQL-backed control plane and are managed through the Paply admin's validated LiteLLM API calls. The native LiteLLM UI remains an advanced diagnostic escape hatch. `config/litellm.yaml` must not contain production provider deployments or credentials. Multiple deployments sharing a `paply-*` model name form that alias's load-balancing pool.
+- Upstream deployments are owned by LiteLLM's PostgreSQL-backed control plane and are managed through the Paply admin's validated LiteLLM API calls. The native LiteLLM UI remains an advanced diagnostic escape hatch. `config/litellm.yaml` must not contain production provider deployments or credentials. Multiple deployments sharing a `paply-*` model name form that alias's load-balancing pool. New `paply-chat` sessions load-balance, but every turn in one session is pinned to the same deployment through LiteLLM session affinity; never fail over a stateful Responses turn to another provider.
 - PostgreSQL is the durable source of truth for LiteLLM users, keys, budgets, and spend.
-- Redis is for LiteLLM coordination and rate limiting. It is never the durable usage source of truth.
+- Redis is for LiteLLM coordination, rate limiting, and the append-only 30-day `paply-chat` affinity map. It is never the durable usage source of truth.
 - The LiteLLM admin port binds to loopback in local Compose. Production ingress must expose only the Paply edge unless an authenticated operator network is explicitly configured.
 
 ## Paply desktop contract
@@ -51,7 +52,7 @@
 - The document contains only model metadata and the public Gateway `/v1` base URL. It never contains provider credentials, LiteLLM credentials, or a Paply session.
 - The desktop authenticates `/api/models` and `/v1/*` with a short-lived Paply access token. This is an application login session, not a model API key.
 - Registration provisions one stable LiteLLM user with `auto_create_key=false`; it never creates a client virtual key. The desktop encrypts the refresh token in the OS keychain-backed Electron safe storage and keeps the access token in the main process only.
-- The edge validates the Paply session, strips caller-supplied internal identity headers, and derives a stable user id. Only the edge may forward that identity to the private LiteLLM listener.
+- The edge validates the Paply session, strips caller-supplied internal identity and LiteLLM affinity headers, and derives a stable user id. It also HMACs the validated Paply session ID together with that user ID before forwarding `x-litellm-session-id`. Only the edge may forward either trusted value to the private LiteLLM listener.
 - Gateway-to-LiteLLM calls use one server-only service credential. LiteLLM custom auth maps the trusted user id into its usage and budget records; users are accounting identities, not virtual keys.
 
 ## Observability and privacy

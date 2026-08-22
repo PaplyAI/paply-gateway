@@ -71,6 +71,13 @@ session into Pi's in-memory runtime. Media requests resolve the same session
 directly. No concrete session enters `models.json`, `auth.json`, or the global
 process environment.
 
+Before every chat provider request, Desktop also sends its stable opaque
+session ID as `x-paply-session-id`. This is routing continuity metadata, not an
+authentication credential. Gateway validates and HMACs it with the
+authenticated user identity before LiteLLM sees it. Swarm subagents receive a
+distinct child affinity ID so each subagent can select a deployment once and
+then remain on it for its complete run.
+
 ## Skills catalog v1 localization
 
 `GET /api/skills` keeps the existing Chinese `name` and `description` strings

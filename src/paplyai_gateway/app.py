@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -39,6 +41,7 @@ from paplyai_gateway.skills import SkillCatalog, create_skill_archive, load_skil
 
 LOGGER = logging.getLogger("paplyai.gateway")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+PAPLY_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 HOP_BY_HOP_HEADERS = {
     "connection",
     "keep-alive",
@@ -94,7 +97,29 @@ def _forward_headers(headers: httpx.Headers) -> dict[str, str]:
     }
 
 
-def _litellm_proxy_headers(request: Request, service_token: str, user_id: str) -> dict[str, str]:
+def _paply_session_affinity_id(
+    request: Request,
+    user_id: str,
+    affinity_secret: str,
+) -> str | None:
+    explicit_session_id = request.headers.get("x-paply-session-id")
+    session_id = explicit_session_id or request.headers.get("x-client-request-id")
+    if session_id is None:
+        return None
+    if not PAPLY_SESSION_ID_PATTERN.fullmatch(session_id):
+        if explicit_session_id is None:
+            return None
+        raise HTTPException(status_code=400, detail="Invalid Paply session ID")
+    message = f"paply-litellm-affinity:v1:{user_id}:{session_id}".encode()
+    return hmac.new(affinity_secret.encode(), message, hashlib.sha256).hexdigest()
+
+
+def _litellm_proxy_headers(
+    request: Request,
+    service_token: str,
+    user_id: str,
+    affinity_secret: str,
+) -> dict[str, str]:
     headers = {
         name: value
         for name, value in request.headers.items()
@@ -106,11 +131,17 @@ def _litellm_proxy_headers(request: Request, service_token: str, user_id: str) -
             "authorization",
             "x-paply-user-id",
             "x-paply-service",
+            "x-paply-session-id",
+            "x-litellm-session-id",
+            "x-litellm-trace-id",
         }
     }
     headers["authorization"] = f"Bearer {service_token}"
     headers["x-paply-user-id"] = user_id
     headers["x-request-id"] = request.state.request_id
+    affinity_id = _paply_session_affinity_id(request, user_id, affinity_secret)
+    if affinity_id is not None:
+        headers["x-litellm-session-id"] = affinity_id
     return headers
 
 
@@ -493,6 +524,7 @@ def create_app(
                 request,
                 runtime_settings.litellm_service_token,
                 identity.user_id,
+                runtime_settings.auth_jwt_secret,
             ),
             content=request.stream(),
             params=request.query_params.multi_items(),
@@ -531,6 +563,7 @@ def create_app(
                 request,
                 runtime_settings.litellm_service_token,
                 identity.user_id,
+                runtime_settings.auth_jwt_secret,
             ),
             content=request.stream(),
             params=request.query_params.multi_items(),
