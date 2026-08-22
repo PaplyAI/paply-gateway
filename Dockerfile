@@ -11,6 +11,7 @@ FROM python:3.12.11-slim AS runtime
 
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_DEFAULT_TIMEOUT=100
+ARG APT_MIRROR_BASE=http://deb.debian.org
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -24,7 +25,9 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN apt-get update \
+RUN sed -i "s|http://deb.debian.org|${APT_MIRROR_BASE%/}|g" \
+        /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install --yes --no-install-recommends gcc libc6-dev \
     && python -m pip install --index-url "${PIP_INDEX_URL}" --upgrade pip \
     && python -m pip install --index-url "${PIP_INDEX_URL}" . \
