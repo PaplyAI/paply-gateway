@@ -25,6 +25,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from paplyai_gateway import __version__
 from paplyai_gateway.models import load_models_template
 from paplyai_gateway.settings import Settings
+from paplyai_gateway.skill_releases import (
+    OssSkillReleaseRepository,
+    SkillSourceConfig,
+    github_latest_revision,
+    publish_github_skills,
+)
+from paplyai_gateway.skill_storage import AliyunOssSkillStore, SkillObjectStore
 
 LOGGER = logging.getLogger("paply.admin")
 WEB_ROOT = Path("web").resolve()
@@ -67,6 +74,10 @@ class DeploymentPayload(BaseModel):
 
 class DeploymentStatePayload(BaseModel):
     blocked: bool
+
+
+class SkillRollbackPayload(BaseModel):
+    revision: str
 
 
 def _client_address(request: Request) -> str:
@@ -504,6 +515,7 @@ def create_admin_app(
     settings: Settings | None = None,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
+    skill_store: SkillObjectStore | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     allowed_models = load_models_template(
@@ -515,10 +527,15 @@ def create_admin_app(
     admin_session_secret = runtime_settings.admin_session_secret
     if not all((admin_password, admin_session_secret, runtime_settings.master_key)):
         raise RuntimeError("Paply admin secrets must not be empty")
+    skills_repository: OssSkillReleaseRepository | None = None
+    if runtime_settings.paply_skills_storage == "oss":
+        resolved_store = skill_store or AliyunOssSkillStore(runtime_settings)
+        skills_repository = OssSkillReleaseRepository(runtime_settings, resolved_store)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.deployment_health = {}
+        application.state.skill_publish_lock = asyncio.Lock()
         application.state.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(20.0, connect=5.0),
             transport=transport,
@@ -756,6 +773,137 @@ def create_admin_app(
             event="admin_api_system_failed",
             failure_message="暂时无法读取系统状态。",
         )
+
+    @application.get("/api/admin/skills")
+    async def admin_skills(request: Request) -> dict[str, Any]:
+        require_api_auth(request)
+        if skills_repository is None:
+            raise HTTPException(status_code=503, detail="OSS 技能发布尚未配置。")
+        try:
+            source = await asyncio.to_thread(skills_repository.source)
+            pointer = await asyncio.to_thread(skills_repository.pointer)
+            index = await asyncio.to_thread(skills_repository.index)
+        except Exception as error:
+            LOGGER.error(
+                "admin_skills_status_failed",
+                extra={"error_type": type(error).__name__},
+            )
+            raise HTTPException(status_code=503, detail="暂时无法读取技能发布状态。") from error
+        github_error: str | None = None
+        try:
+            latest_revision = await github_latest_revision(
+                request.app.state.http_client,
+                source,
+                token=runtime_settings.skills_github_token,
+            )
+        except Exception as error:
+            LOGGER.error(
+                "admin_skills_github_check_failed",
+                extra={"error_type": type(error).__name__},
+            )
+            latest_revision = None
+            github_error = "GitHub 最新版本检查失败，请检查仓库权限或 API 配额。"
+        return {
+            "data": {
+                "source": source.model_dump(by_alias=True),
+                "storage": {
+                    "provider": "阿里云 OSS",
+                    "bucket": runtime_settings.paply_skills_oss_bucket,
+                    "region": runtime_settings.paply_skills_oss_region,
+                    "endpoint": runtime_settings.paply_skills_oss_endpoint,
+                    "prefix": runtime_settings.paply_skills_oss_prefix,
+                    "credentials": runtime_settings.paply_skills_oss_credentials,
+                },
+                "githubAuthenticationConfigured": bool(runtime_settings.skills_github_token),
+                "latestRevision": latest_revision,
+                "githubError": github_error,
+                "currentRevision": pointer.revision if pointer else None,
+                "publishedAt": pointer.published_at if pointer else None,
+                "releases": (
+                    [record.model_dump(by_alias=True) for record in index.releases] if index else []
+                ),
+            }
+        }
+
+    @application.patch("/api/admin/skills/source")
+    async def admin_update_skill_source(
+        request: Request, payload: SkillSourceConfig
+    ) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        if skills_repository is None:
+            raise HTTPException(status_code=503, detail="OSS 技能发布尚未配置。")
+        try:
+            await asyncio.to_thread(skills_repository.save_source, payload)
+        except (ValueError, OSError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except Exception as error:
+            LOGGER.error(
+                "admin_skill_source_update_failed",
+                extra={"error_type": type(error).__name__},
+            )
+            raise HTTPException(status_code=503, detail="技能源配置保存失败。") from error
+        LOGGER.info("admin_skill_source_updated")
+        return {"data": {"message": "技能源配置已保存。"}}
+
+    @application.post("/api/admin/skills/publish")
+    async def admin_publish_skills(request: Request) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        if skills_repository is None:
+            raise HTTPException(status_code=503, detail="OSS 技能发布尚未配置。")
+        lock: asyncio.Lock = request.app.state.skill_publish_lock
+        if lock.locked():
+            raise HTTPException(status_code=409, detail="已有技能发布任务正在执行。")
+        async with lock:
+            try:
+                pointer = await publish_github_skills(
+                    request.app.state.http_client, skills_repository
+                )
+            except Exception as error:
+                LOGGER.error(
+                    "admin_skill_publish_failed",
+                    extra={"error_type": type(error).__name__},
+                )
+                if isinstance(error, (ValueError, RuntimeError, httpx.HTTPError)):
+                    detail = f"技能发布失败：{error}"
+                else:
+                    detail = "技能发布失败，请查看 Gateway 结构化日志。"
+                raise HTTPException(status_code=502, detail=detail) from error
+        LOGGER.info("admin_skill_release_published", extra={"revision": pointer.revision})
+        return {
+            "data": {
+                "message": "技能已验证并发布到 OSS。",
+                "revision": pointer.revision,
+                "publishedAt": pointer.published_at,
+            }
+        }
+
+    @application.post("/api/admin/skills/rollback")
+    async def admin_rollback_skills(
+        request: Request, payload: SkillRollbackPayload
+    ) -> dict[str, Any]:
+        require_api_auth(request)
+        verify_api_csrf(request)
+        if skills_repository is None:
+            raise HTTPException(status_code=503, detail="OSS 技能发布尚未配置。")
+        try:
+            pointer = await asyncio.to_thread(skills_repository.rollback, payload.revision)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except Exception as error:
+            LOGGER.error(
+                "admin_skill_rollback_failed",
+                extra={"error_type": type(error).__name__},
+            )
+            raise HTTPException(status_code=503, detail="技能版本回滚失败。") from error
+        LOGGER.info("admin_skill_release_rolled_back", extra={"revision": pointer.revision})
+        return {
+            "data": {
+                "message": "技能版本已回滚。",
+                "revision": pointer.revision,
+            }
+        }
 
     @application.patch("/api/admin/users/{user_id}")
     async def api_update_user_budget(

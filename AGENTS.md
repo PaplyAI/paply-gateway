@@ -31,7 +31,15 @@
   Skills absorbed into the product are removed from `skills` and exposed only
   through top-level `retiredSkillIds`, allowing Desktop to archive existing
   managed installations without inventing retirement state locally.
-- `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key. Overview, users, models, and system status are separate routes. It is the daily control surface for LiteLLM deployments and user budgets; provider secrets are write-only and must never be rendered or stored in the browser session.
+  Production releases are built by the authenticated admin from an immutable
+  public GitHub commit, validated before publication, packaged as deterministic
+  per-skill archives, and stored under a private Aliyun OSS prefix. Production
+  credentials come from the ECS instance RAM role, not long-lived AccessKeys.
+  The release pointer changes only after all artifacts and the catalog are
+  uploaded and verified. Desktop continues to use authenticated Gateway URLs;
+  Gateway streams the exact immutable OSS object without exposing OSS
+  credentials or public bucket URLs.
+- `admin` is the Paply-owned Chinese management UI. Local Compose binds it to loopback port 4390; it is the only Paply service allowed to receive the LiteLLM master key. Overview, users, models, skill releases, and system status are separate routes. It is the daily control surface for LiteLLM deployments, user budgets, and validated GitHub-to-OSS skill publication; provider secrets are write-only and must never be rendered or stored in the browser session.
 - The admin SPA lives in `admin-ui/` and is derived from Octopus at the exact commit recorded in `admin-ui/UPSTREAM.md`. That frontend subtree remains AGPL-3.0-only; Paply branding, session authentication, JSON control-plane APIs, and write-only provider-secret handling are Paply-owned adaptations. Build it into `web/static/admin-app`; never serve the Octopus API-key authentication or product branding.
 - The native LiteLLM UI on port 4000 is shipped from the pinned Paply wrapper image in `Dockerfile.litellm`; its compiled pages receive the checked-in Chinese localization and Paply theme during image build. Never patch a running container manually.
 - The pinned wrapper also loads `config/litellm_dashscope_image_edit.py`: v1.96.0 already supports DashScope Qwen-Image generation but not edits, so the compatibility module adds the missing JSON edit transform and corrects the provider's `n` parameter mapping. Keep it isolated, covered by container smoke tests, and remove it when a reviewed LiteLLM upgrade provides equivalent behavior.

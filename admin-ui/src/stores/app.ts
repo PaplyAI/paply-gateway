@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import type { LucideIcon } from 'lucide-react';
-import { FolderTree, Home, Settings, Users } from 'lucide-react';
+import { FolderTree, Home, PackageCheck, Settings, Users } from 'lucide-react';
 
 // Page 表示应用支持的固定页面集合。
-export type Page = 'home' | 'users' | 'models' | 'system';
+export type Page = 'home' | 'users' | 'models' | 'skills' | 'system';
 
 // NavItem 描述导航按钮使用的页面标识、文案和图标。
 type NavItem = { id: Page; label: string; icon: LucideIcon };
@@ -13,6 +13,7 @@ export const NAV_ITEMS: NavItem[] = [
     { id: 'home', label: '运行概览', icon: Home },
     { id: 'users', label: '用户与预算', icon: Users },
     { id: 'models', label: '模型与节点', icon: FolderTree },
+    { id: 'skills', label: '技能发布', icon: PackageCheck },
     { id: 'system', label: '系统状态', icon: Settings },
 ];
 
@@ -20,6 +21,7 @@ const PAGE_PATHS: Record<Page, string> = {
     home: '/overview',
     users: '/users',
     models: '/models',
+    skills: '/skills',
     system: '/system',
 };
 

@@ -94,6 +94,30 @@ export interface SystemData {
   updated_at: string;
 }
 
+export interface SkillSourceConfig {
+  repository: string;
+  ref: string;
+  catalogPath: string;
+}
+
+export interface SkillsData {
+  source: SkillSourceConfig;
+  storage: {
+    provider: string;
+    bucket: string;
+    region: string;
+    endpoint: string;
+    prefix: string;
+    credentials: string;
+  };
+  latestRevision: string | null;
+  githubError: string | null;
+  currentRevision: string | null;
+  publishedAt: string | null;
+  githubAuthenticationConfigured: boolean;
+  releases: Array<{ revision: string; publishedAt: string; skillCount: number }>;
+}
+
 export interface UserBudgetInput {
   max_budget: string;
   budget_duration: string;
@@ -118,6 +142,7 @@ export const adminKeys = {
   users: ['admin', 'users'] as const,
   models: ['admin', 'models'] as const,
   system: ['admin', 'system'] as const,
+  skills: ['admin', 'skills'] as const,
 };
 
 export function useOverview() {
@@ -137,6 +162,34 @@ export function useSystem() {
     queryKey: adminKeys.system,
     queryFn: () => apiRequest<SystemData>('/api/admin/system'),
     refetchInterval: 30_000,
+  });
+}
+
+export function useSkills() {
+  return useQuery({ queryKey: adminKeys.skills, queryFn: () => apiRequest<SkillsData>('/api/admin/skills') });
+}
+
+export function useUpdateSkillSource() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SkillSourceConfig) => apiRequest<{ message: string }>('/api/admin/skills/source', { method: 'PATCH', body: input }),
+    onSuccess: () => client.invalidateQueries({ queryKey: adminKeys.skills }),
+  });
+}
+
+export function usePublishSkills() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiRequest<{ message: string; revision: string }>('/api/admin/skills/publish', { method: 'POST' }),
+    onSuccess: () => client.invalidateQueries({ queryKey: adminKeys.skills }),
+  });
+}
+
+export function useRollbackSkills() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (revision: string) => apiRequest<{ message: string; revision: string }>('/api/admin/skills/rollback', { method: 'POST', body: { revision } }),
+    onSuccess: () => client.invalidateQueries({ queryKey: adminKeys.skills }),
   });
 }
 

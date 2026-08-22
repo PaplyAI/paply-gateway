@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -35,6 +36,8 @@ from paplyai_gateway.auth import (
 )
 from paplyai_gateway.models import ModelsTemplate, load_models_template
 from paplyai_gateway.settings import Settings
+from paplyai_gateway.skill_releases import OssSkillReleaseRepository
+from paplyai_gateway.skill_storage import AliyunOssSkillStore, SkillObjectStore
 from paplyai_gateway.skills import SkillCatalog, create_skill_archive, load_skill_catalog
 
 LOGGER = logging.getLogger("paplyai.gateway")
@@ -158,13 +161,18 @@ def create_app(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
     account_store: AccountStore | None = None,
+    skill_store: SkillObjectStore | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
     models_template: ModelsTemplate = load_models_template(
         runtime_settings.paply_models_config_path
     )
     skills_catalog: SkillCatalog | None = None
-    if runtime_settings.paply_skills_catalog_path is not None:
+    skills_repository: OssSkillReleaseRepository | None = None
+    if runtime_settings.paply_skills_storage == "oss":
+        resolved_store = skill_store or AliyunOssSkillStore(runtime_settings)
+        skills_repository = OssSkillReleaseRepository(runtime_settings, resolved_store)
+    elif runtime_settings.paply_skills_catalog_path is not None:
         skills_catalog = load_skill_catalog(runtime_settings.paply_skills_catalog_path)
     accounts = account_store or AccountStore(runtime_settings.paply_accounts_db_path)
 
@@ -437,6 +445,21 @@ def create_app(
     @application.get("/api/skills")
     async def skills_config(request: Request) -> dict[str, object]:
         bearer_identity(request, runtime_settings)
+        if skills_repository is not None:
+            try:
+                pointer, catalog = await asyncio.to_thread(skills_repository.current_catalog)
+            except Exception as error:
+                _json_log(
+                    "skills_catalog_oss_failed",
+                    request_id=request.state.request_id,
+                    error_type=type(error).__name__,
+                )
+                raise HTTPException(
+                    status_code=503, detail="PaplyAI skill catalog is unavailable"
+                ) from error
+            return catalog.public_document(
+                runtime_settings.paply_public_base_url, revision=pointer.revision
+            )
         if skills_catalog is None:
             raise HTTPException(
                 status_code=503,
@@ -444,9 +467,82 @@ def create_app(
             )
         return skills_catalog.public_document(runtime_settings.paply_public_base_url)
 
-    @application.get("/api/skills/{skill_id}/artifact")
-    async def skill_artifact(skill_id: str, request: Request) -> FileResponse:
+    async def oss_artifact_response(
+        skill_id: str, revision: str, request: Request
+    ) -> StreamingResponse:
+        if skills_repository is None:
+            raise HTTPException(status_code=404, detail="Skill release was not found")
+        try:
+            _, catalog = await asyncio.to_thread(skills_repository.revision_catalog, revision)
+            skill = catalog.skill(skill_id)
+            if skill is None or skill.status != "available" or not skill.artifact_object_key:
+                raise HTTPException(status_code=404, detail="PaplyAI skill artifact was not found")
+            metadata = await asyncio.to_thread(
+                skills_repository.store.head, skill.artifact_object_key
+            )
+            if metadata.size > 50 * 1024 * 1024:
+                raise RuntimeError("published skill artifact exceeds the client limit")
+        except HTTPException:
+            raise
+        except (ValueError, KeyError) as error:
+            raise HTTPException(status_code=404, detail="Skill release was not found") from error
+        except Exception as error:
+            _json_log(
+                "skill_artifact_oss_failed",
+                request_id=request.state.request_id,
+                skill_id=skill_id,
+                revision=revision,
+                error_type=type(error).__name__,
+            )
+            raise HTTPException(
+                status_code=503, detail="PaplyAI skill artifact is unavailable"
+            ) from error
+
+        def stream_artifact() -> Any:
+            try:
+                yield from skills_repository.store.iter_bytes(skill.artifact_object_key)
+            except Exception as error:
+                _json_log(
+                    "skill_artifact_oss_stream_failed",
+                    request_id=request.state.request_id,
+                    skill_id=skill_id,
+                    revision=revision,
+                    error_type=type(error).__name__,
+                )
+                raise
+
+        return StreamingResponse(
+            stream_artifact(),
+            media_type="application/gzip",
+            headers={
+                "Content-Length": str(metadata.size),
+                "Content-Disposition": (
+                    f'attachment; filename="{skill.id}-{skill.version}.tar.gz"'
+                ),
+                "Cache-Control": "private, no-store",
+            },
+        )
+
+    @application.get("/api/skills/{skill_id}/revisions/{revision}/artifact")
+    async def versioned_skill_artifact(
+        skill_id: str, revision: str, request: Request
+    ) -> StreamingResponse:
         bearer_identity(request, runtime_settings)
+        return await oss_artifact_response(skill_id, revision, request)
+
+    @application.get("/api/skills/{skill_id}/artifact")
+    async def skill_artifact(skill_id: str, request: Request) -> Response:
+        bearer_identity(request, runtime_settings)
+        if skills_repository is not None:
+            try:
+                pointer = await asyncio.to_thread(skills_repository.pointer)
+            except Exception as error:
+                raise HTTPException(
+                    status_code=503, detail="PaplyAI skill catalog is unavailable"
+                ) from error
+            if pointer is None:
+                raise HTTPException(status_code=503, detail="PaplyAI skill catalog is unavailable")
+            return await oss_artifact_response(skill_id, pointer.revision, request)
         if skills_catalog is None:
             raise HTTPException(
                 status_code=503,

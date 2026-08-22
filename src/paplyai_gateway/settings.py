@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -21,6 +22,17 @@ class Settings(BaseSettings):
     paply_public_base_url: str = "http://127.0.0.1:4387"
     paply_models_config_path: Path = Path("config/paply-models.yaml")
     paply_skills_catalog_path: Path | None = None
+    paply_skills_storage: Literal["local", "oss"] = "local"
+    paply_skills_oss_endpoint: str | None = None
+    paply_skills_oss_region: str | None = None
+    paply_skills_oss_bucket: str | None = None
+    paply_skills_oss_prefix: str = "skills"
+    paply_skills_oss_credentials: Literal["ecs_ram_role", "default"] = "ecs_ram_role"
+    paply_skills_oss_ecs_role_name: str | None = None
+    paply_skills_github_repository: str = "PaplyAI/paplyai-skills"
+    paply_skills_github_ref: str = "main"
+    paply_skills_github_catalog_path: str = "catalog.json"
+    paply_skills_github_token: SecretStr | None = None
     paply_accounts_db_path: Path = Path("data/accounts.sqlite3")
     paply_auth_jwt_secret: SecretStr | None = None
     paply_auth_jwt_issuer: str = "paply"
@@ -72,6 +84,41 @@ class Settings(BaseSettings):
             raise ValueError("PAPLY_DEFAULT_USER_BUDGET must be greater than zero")
         if not self.paply_default_user_budget_duration.strip():
             raise ValueError("PAPLY_DEFAULT_USER_BUDGET_DURATION must not be empty")
+        if self.paply_skills_storage == "oss":
+            missing = [
+                name
+                for name, value in (
+                    ("PAPLY_SKILLS_OSS_ENDPOINT", self.paply_skills_oss_endpoint),
+                    ("PAPLY_SKILLS_OSS_REGION", self.paply_skills_oss_region),
+                    ("PAPLY_SKILLS_OSS_BUCKET", self.paply_skills_oss_bucket),
+                )
+                if value is None or not value.strip()
+            ]
+            if missing:
+                raise ValueError(f"OSS skill storage requires: {', '.join(missing)}")
+            endpoint = self.paply_skills_oss_endpoint or ""
+            parsed_endpoint = urlparse(endpoint)
+            if parsed_endpoint.scheme != "https" or not parsed_endpoint.netloc:
+                raise ValueError("PAPLY_SKILLS_OSS_ENDPOINT must be an HTTPS endpoint")
+            self.paply_skills_oss_endpoint = endpoint.rstrip("/")
+        self.paply_skills_oss_prefix = self.paply_skills_oss_prefix.strip("/")
+        if not re.fullmatch(
+            r"[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}",
+            self.paply_skills_oss_prefix,
+        ):
+            raise ValueError("PAPLY_SKILLS_OSS_PREFIX is invalid")
+        if not re.fullmatch(
+            r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.paply_skills_github_repository
+        ):
+            raise ValueError("PAPLY_SKILLS_GITHUB_REPOSITORY must use owner/repository")
+        if not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._/-]{0,127}",
+            self.paply_skills_github_ref,
+        ):
+            raise ValueError("PAPLY_SKILLS_GITHUB_REF is invalid")
+        catalog_path = Path(self.paply_skills_github_catalog_path)
+        if catalog_path.is_absolute() or ".." in catalog_path.parts:
+            raise ValueError("PAPLY_SKILLS_GITHUB_CATALOG_PATH must be repository-relative")
         return self
 
     @staticmethod
@@ -113,6 +160,13 @@ class Settings(BaseSettings):
     @property
     def master_key(self) -> str:
         return self._required_secret(self.litellm_master_key, "LITELLM_MASTER_KEY")
+
+    @property
+    def skills_github_token(self) -> str | None:
+        if self.paply_skills_github_token is None:
+            return None
+        value = self.paply_skills_github_token.get_secret_value().strip()
+        return value or None
 
     @staticmethod
     def _required_secret(value: SecretStr | None, name: str) -> str:

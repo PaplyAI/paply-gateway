@@ -5,6 +5,7 @@ import { LoginForm } from '@/components/modules/login';
 import { ModelsActions, ModelsPage } from '@/components/paply/models';
 import { OverviewPage } from '@/components/paply/overview';
 import { SystemPage } from '@/components/paply/system';
+import { SkillsPage } from '@/components/paply/skills';
 import { UsersPage } from '@/components/paply/users';
 import { useAppStore } from '@/stores/app';
 
@@ -40,6 +41,7 @@ export function AppContainer() {
           {currentPage === 'home' ? <OverviewPage /> : null}
           {currentPage === 'users' ? <UsersPage /> : null}
           {currentPage === 'models' ? <ModelsPage /> : null}
+          {currentPage === 'skills' ? <SkillsPage /> : null}
           {currentPage === 'system' ? <SystemPage /> : null}
         </div>
       </AppShell>

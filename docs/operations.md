@@ -14,6 +14,41 @@ Public production ingress should expose only:
 - `GET /api/models`
 - `GET /api/skills`
 - `GET /api/skills/{skill-id}/artifact`
+- `GET /api/skills/{skill-id}/revisions/{commit}/artifact`
+
+## 技能发布到阿里云 OSS
+
+生产环境将 `PAPLY_SKILLS_STORAGE` 设置为 `oss`。华南 1（深圳）使用
+`cn-shenzhen` 和同地域 ECS 内网 Endpoint
+`https://oss-cn-shenzhen-internal.aliyuncs.com`。Bucket 必须保持私有，并给
+ECS 绑定只允许读写 `skills/` 前缀的实例 RAM 角色。
+
+RAM 角色可使用以下最小权限策略（Bucket 名称为 `paplyai-skills`）：
+
+```json
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["oss:GetObject", "oss:PutObject"],
+      "Resource": ["acs:oss:*:*:paplyai-skills/skills/*"]
+    }
+  ]
+}
+```
+
+将该角色绑定到运行 Gateway 的 ECS，并通过
+`PAPLY_SKILLS_OSS_ECS_ROLE_NAME` 显式填写角色名称。GitHub 私有仓库需要在
+服务端设置只读 `PAPLY_SKILLS_GITHUB_TOKEN`；Token 不进入管理网页、OSS
+控制文档或日志。
+
+管理员在管理台的“技能发布”页配置公开 GitHub 仓库、分支和 Catalog 路径，
+然后点击“发布 GitHub 最新版本”。管理端下载不可变 Commit，拒绝路径穿越、
+符号链接和超限文件，验证 Catalog 与每个 `paplyai-skill.json`，生成确定性
+压缩包和 SHA-256，上传全部制品后才原子切换当前发布指针。失败不会改变当前
+版本。桌面端继续只访问 Gateway，Gateway 根据带 Commit 的下载地址从 OSS
+流式读取精确制品。
 - the required `/v1/*` OpenAI-compatible routes
 
 LiteLLM port `4000`, `/ui`, master-key endpoints, PostgreSQL, and Redis belong on the operator network. Local Compose binds LiteLLM to `127.0.0.1` by default and does not publish either database. A temporary IP-and-port operator setup may set `PAPLY_LITELLM_UI_BIND_ADDRESS=0.0.0.0` and `PAPLY_LITELLM_UI_PUBLIC_URL=http://<server-ip>:4000`; do not expose PostgreSQL or Redis. Move this endpoint behind HTTPS before any non-temporary deployment.

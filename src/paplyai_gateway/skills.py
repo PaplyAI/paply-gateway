@@ -48,6 +48,7 @@ class SkillCatalogEntry(StrictModel):
     composes: list[str]
     download_url: str | None = Field(default=None, alias="downloadUrl")
     artifact_path: str | None = Field(default=None, alias="artifactPath")
+    artifact_object_key: str | None = Field(default=None, alias="artifactObjectKey")
     status: Literal["available", "adapting"]
     license: str | None = None
     upstream: str | None = None
@@ -58,8 +59,17 @@ class SkillCatalogEntry(StrictModel):
 
     @model_validator(mode="after")
     def require_available_artifact(self) -> "SkillCatalogEntry":
-        if self.status == "available" and not (self.download_url or self.artifact_path):
-            raise ValueError("available skills require downloadUrl or artifactPath")
+        if self.status == "available" and not (
+            self.download_url or self.artifact_path or self.artifact_object_key
+        ):
+            raise ValueError(
+                "available skills require downloadUrl, artifactPath, or artifactObjectKey"
+            )
+        if self.artifact_object_key and (
+            self.artifact_object_key.startswith("/")
+            or ".." in Path(self.artifact_object_key).parts
+        ):
+            raise ValueError("artifact object keys must be storage-relative")
         if any(
             not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", legacy_id)
             for legacy_id in self.replaces
@@ -144,18 +154,28 @@ class SkillCatalog(StrictModel):
             raise ValueError(f"skill artifact contains symbolic links: {skill.id}")
         return artifact
 
-    def public_document(self, base_url: str) -> dict[str, object]:
+    def public_document(
+        self, base_url: str, *, revision: str | None = None
+    ) -> dict[str, object]:
         skills: list[dict[str, object]] = []
         for skill in self.skills:
             item = skill.model_dump(
                 by_alias=True,
                 exclude_none=True,
-                exclude={"artifact_path", "download_url"},
+                exclude={"artifact_path", "artifact_object_key", "download_url"},
             )
-            if skill.status == "available" and skill.artifact_path:
-                item["downloadUrl"] = (
-                    f"{base_url.rstrip('/')}/api/skills/{skill.id}/artifact"
-                )
+            if skill.status == "available" and (
+                skill.artifact_path or skill.artifact_object_key
+            ):
+                if revision:
+                    item["downloadUrl"] = (
+                        f"{base_url.rstrip('/')}/api/skills/{skill.id}/revisions/"
+                        f"{revision}/artifact"
+                    )
+                else:
+                    item["downloadUrl"] = (
+                        f"{base_url.rstrip('/')}/api/skills/{skill.id}/artifact"
+                    )
             else:
                 item["downloadUrl"] = skill.download_url
             skills.append(item)
@@ -180,6 +200,14 @@ def load_skill_catalog(path: Path) -> SkillCatalog:
         return SkillCatalog.model_validate({**payload, "root": path.parent})
     except (TypeError, ValueError) as error:
         raise RuntimeError(f"skills catalog is invalid: {path}") from error
+
+
+def load_skill_catalog_bytes(value: bytes, *, root: Path = Path("/")) -> SkillCatalog:
+    try:
+        payload = json.loads(value.decode("utf-8"))
+        return SkillCatalog.model_validate({**payload, "root": root})
+    except (UnicodeDecodeError, TypeError, ValueError) as error:
+        raise RuntimeError("published skills catalog is invalid") from error
 
 
 def create_skill_archive(catalog: SkillCatalog, skill: SkillCatalogEntry) -> Path:

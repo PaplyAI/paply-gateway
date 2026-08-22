@@ -24,8 +24,12 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m pip install --index-url "${PIP_INDEX_URL}" --upgrade pip \
-    && python -m pip install --index-url "${PIP_INDEX_URL}" .
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends gcc libc6-dev \
+    && python -m pip install --index-url "${PIP_INDEX_URL}" --upgrade pip \
+    && python -m pip install --index-url "${PIP_INDEX_URL}" . \
+    && apt-get purge --yes --auto-remove gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY config ./config
 COPY scripts/create_access_token.py ./scripts/create_access_token.py
