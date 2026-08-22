@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import json
 import tarfile
 from pathlib import Path
@@ -256,6 +258,9 @@ def test_proxy_preserves_streaming_body_status_and_maps_server_side_identity(
         assert request.headers["authorization"] == "Bearer test-internal-service-token"
         assert request.headers["x-paply-user-id"] == "user-alice"
         assert request.headers["x-request-id"] == "stream-request"
+        assert request.headers["x-litellm-session-id"] == expected_affinity_id
+        assert "x-paply-session-id" not in request.headers
+        assert "x-litellm-trace-id" not in request.headers
         assert await request.aread() == b'{"model":"paply-chat","input":"hello"}'
         return httpx.Response(
             200,
@@ -263,6 +268,11 @@ def test_proxy_preserves_streaming_body_status_and_maps_server_side_identity(
             headers={"content-type": "text/event-stream"},
         )
 
+    expected_affinity_id = hmac.new(
+        b"test-paply-jwt-secret",
+        b"paply-litellm-affinity:v1:user-alice:session-research-1",
+        hashlib.sha256,
+    ).hexdigest()
     app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
     with TestClient(app) as client:
         response = client.post(
@@ -273,6 +283,9 @@ def test_proxy_preserves_streaming_body_status_and_maps_server_side_identity(
                 "content-type": "application/json",
                 "x-request-id": "stream-request",
                 "x-paply-user-id": "attacker-controlled-user",
+                "x-paply-session-id": "session-research-1",
+                "x-litellm-session-id": "attacker-controlled-session",
+                "x-litellm-trace-id": "attacker-controlled-trace",
             },
         )
 
@@ -280,6 +293,57 @@ def test_proxy_preserves_streaming_body_status_and_maps_server_side_identity(
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["x-request-id"] == "stream-request"
     assert response.content == b"data: first\n\ndata: [DONE]\n\n"
+
+
+def test_proxy_affinity_is_stable_per_session_and_namespaced_by_user(
+    config_path: Path,
+) -> None:
+    affinity_ids: list[str] = []
+
+    class JsonResponseStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'{"id":"resp-test"}'
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        affinity_ids.append(request.headers["x-litellm-session-id"])
+        return httpx.Response(200, stream=JsonResponseStream())
+
+    app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        for user_id in ("user-alice", "user-alice", "user-bob"):
+            response = client.post(
+                "/v1/responses",
+                content=b'{"model":"paply-chat","input":"hello"}',
+                headers={
+                    "authorization": f"Bearer {access_token(user_id)}",
+                    "content-type": "application/json",
+                    "x-paply-session-id": "session-shared-name",
+                },
+            )
+            assert response.status_code == 200
+
+    assert affinity_ids[0] == affinity_ids[1]
+    assert affinity_ids[0] != affinity_ids[2]
+
+
+def test_proxy_rejects_invalid_explicit_paply_session_id(config_path: Path) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected upstream call: {request.url}")
+
+    app = create_app(make_settings(config_path), transport=httpx.MockTransport(handler))
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/responses",
+            content=b'{"model":"paply-chat","input":"hello"}',
+            headers={
+                "authorization": f"Bearer {access_token()}",
+                "content-type": "application/json",
+                "x-paply-session-id": "contains spaces",
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid Paply session ID"
 
 
 def test_image_proxy_preserves_accounting_identity_and_materializes_base64(

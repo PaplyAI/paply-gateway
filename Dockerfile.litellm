@@ -1,6 +1,7 @@
 FROM ghcr.io/berriai/litellm:v1.96.0
 
 COPY scripts/patch_litellm_ui.py /tmp/patch_litellm_ui.py
+COPY scripts/patch_litellm_session_affinity.py /tmp/patch_litellm_session_affinity.py
 COPY web/litellm-ui/paply-zh.js /tmp/paply-zh.js
 COPY web/litellm-ui/paply-theme.css /tmp/paply-theme.css
 COPY web/static/paplyai-logo.png /tmp/paplyai-logo.png
@@ -8,4 +9,6 @@ COPY config/litellm_custom_auth.py /app/litellm_custom_auth.py
 COPY config/litellm_dashscope_image_edit.py /app/litellm_dashscope_image_edit.py
 
 RUN python /tmp/patch_litellm_ui.py \
-    && rm /tmp/patch_litellm_ui.py /tmp/paply-zh.js /tmp/paply-theme.css /tmp/paplyai-logo.png
+    && python /tmp/patch_litellm_session_affinity.py \
+    && rm /tmp/patch_litellm_ui.py /tmp/patch_litellm_session_affinity.py \
+      /tmp/paply-zh.js /tmp/paply-theme.css /tmp/paplyai-logo.png

@@ -11,7 +11,8 @@ Paply desktop main process
                          ▼
                  Paply FastAPI edge
              verify session, derive user_id
-             strip untrusted identity headers
+             derive private session affinity ID
+             strip untrusted internal headers
                          │ internal service credential
                          ▼
                   LiteLLM data plane
@@ -30,6 +31,14 @@ LiteLLM remains the single token and spend ledger. The edge preserves streaming
 and upstream status codes, does not retry billable requests, and never logs
 request content or authorization values. `/v1/responses` and
 `/v1/chat/completions` use exactly the same authentication and accounting path.
+
+For `paply-chat`, `simple-shuffle` chooses a healthy deployment only at the
+start of a session. Desktop sends a stable `x-paply-session-id`; the edge
+validates it, namespaces it by authenticated user, and forwards only an HMACed
+`x-litellm-session-id`. LiteLLM stores the 30-day affinity mapping in persistent
+Redis, so native Responses reasoning and tool state stay on one actual model.
+Caller-supplied LiteLLM affinity headers are discarded. Vision and image model
+groups remain request-load-balanced.
 
 The first release intentionally omits the full LiteLLM feature surface. It
 needs model routing, per-user budgets/rate limits, usage reporting, the desktop
